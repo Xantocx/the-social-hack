@@ -1,0 +1,9 @@
+notebook
+matplotlib
+requests
+beautifulsoup4
+HTMLParser
+rdflib
+scrape-schema-recipe
+prettytable
+rdflib
