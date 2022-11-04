@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+    <Document id="11">
+        <Placemark id="13">
+            <name>Amsterdam</name>
+            <description>The location of Amsterdam, as provided on Wikipedia (http://dbpedia.org/resource/Micheal_Jackson).</description>
+            <Point id="12">
+                <coordinates>4.900,52.367,0.0</coordinates>
+            </Point>
+        </Placemark>
+    </Document>
+</kml>

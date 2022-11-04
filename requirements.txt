@@ -7,3 +7,4 @@ rdflib
 scrape-schema-recipe
 prettytable
 rdflib
+simplekml
