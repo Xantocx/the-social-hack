@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# CUSTOM
+assignment3/facebook/*
+!assignment3/facebook/0.edges
