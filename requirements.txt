@@ -12,3 +12,5 @@ python-twitter-v2
 matplotlib
 geocoder
 tweepy
+networkx
+matplotlib
