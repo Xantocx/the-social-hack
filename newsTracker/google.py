@@ -36,6 +36,11 @@ class GoogleSearch:
 
         return config["GOOGLE_API_KEY"], config["CUSTOM_SEARCH_ENGINE_ID"]
 
+    @classmethod
+    def create_from(cls, filename: str, site: str = None):
+        api_key, search_engine_id = cls.read_keys(filename)
+        return GoogleSearch(api_key, search_engine_id, site)
+
     def search(self, search_term: str, **kwargs) -> List[SearchResult]:
         search_term = f"{search_term} {self.search_modifier}"
         results = self.search_engine.list(q=search_term, cx=self.search_engine_id, **kwargs).execute()
@@ -44,10 +49,11 @@ class GoogleSearch:
 GoogleSearchResult = GoogleSearch.SearchResult
 
 
-API_KEY, SE_ID = GoogleSearch.read_keys("C:/Users/maxim/Documents/Studium/Master/Year 2/Period 2/the-social-hack/.env")
+if __name__ == "__main__":
+    API_KEY, SE_ID = GoogleSearch.read_keys("./.env")
 
-reddit_search = GoogleSearch(API_KEY, SE_ID, "reddit.com")
-results = reddit_search.search("qatar2022", num=10)
+    reddit_search = GoogleSearch(API_KEY, SE_ID, "reddit.com")
+    results = reddit_search.search("qatar2022", num=10)
 
-for result in results:
-    print(result)
+    for result in results:
+        print(result)
