@@ -1,3 +1,5 @@
+from newsTracker import Configuration
+
 from googleapiclient.discovery import build
 from typing import List, Tuple
 
@@ -29,17 +31,8 @@ class GoogleSearch:
         return "" if self.search_site is None else f"site:{self.search_site}"
 
     @classmethod
-    def read_keys(cls, filename: str) -> Tuple[str, str]:
-        with open(filename, "r") as file:
-            lines = [line.strip().split("=") for line in file.readlines() if len(line.strip()) >= 3]
-            config = {line[0]: line[1] for line in lines if len(line) == 2}
-
-        return config["GOOGLE_API_KEY"], config["CUSTOM_SEARCH_ENGINE_ID"]
-
-    @classmethod
-    def create_from(cls, filename: str, site: str = None):
-        api_key, search_engine_id = cls.read_keys(filename)
-        return GoogleSearch(api_key, search_engine_id, site)
+    def create_from(cls, config: Configuration, site: str = None):
+        return GoogleSearch(config.google_api_key, config.search_engine_id, site)
 
     def search(self, search_term: str, **kwargs) -> List[SearchResult]:
         search_term = f"{search_term} {self.search_modifier}"
@@ -47,13 +40,3 @@ class GoogleSearch:
         return GoogleSearch.SearchResult.parse(results["items"])
 
 GoogleSearchResult = GoogleSearch.SearchResult
-
-
-if __name__ == "__main__":
-    API_KEY, SE_ID = GoogleSearch.read_keys("./.env")
-
-    reddit_search = GoogleSearch(API_KEY, SE_ID, "reddit.com")
-    results = reddit_search.search("qatar2022", num=10)
-
-    for result in results:
-        print(result)

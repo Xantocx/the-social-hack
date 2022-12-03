@@ -1,7 +1,10 @@
+from newsTracker import Configuration
 from newsTracker.google import *
 from newsTracker.reddit import *
 
-reddit = GoogleSearch.create_from("./.env", "reddit.com")
+config = Configuration.load_from(".env")
+
+reddit = GoogleSearch.create_from(config, "reddit.com")
 results = reddit.search("quantum computers", num=10)
 
 for result in results:

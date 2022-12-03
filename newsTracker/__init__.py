@@ -1,0 +1,1 @@
+from newsTracker.config import Configuration
