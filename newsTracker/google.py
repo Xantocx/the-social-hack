@@ -1,7 +1,8 @@
-from newsTracker import Configuration
+from NewsTracker import Configuration
 
 from googleapiclient.discovery import build
-from typing import List, Tuple
+from typing import List
+
 
 class GoogleSearch:
 

@@ -1,1 +1,1 @@
-from newsTracker.config import Configuration
+from NewsTracker.Config import Configuration

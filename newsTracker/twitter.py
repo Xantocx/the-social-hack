@@ -1,7 +1,8 @@
-from newsTracker import Configuration
+from NewsTracker import Configuration
 
 import tweepy
 import twint
+
 
 class TwitterAnalyzer:
 

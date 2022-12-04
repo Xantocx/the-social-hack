@@ -1,4 +1,4 @@
-from newsTracker.twitter import *
+from NewsTracker.Twitter import *
 
 config = Configuration.load_from(".env")
 

@@ -1,6 +1,6 @@
 import praw
 import csv
-from .google import *
+from NewsTracker.Google import *
 
 
 ##### WorkInProgress ######

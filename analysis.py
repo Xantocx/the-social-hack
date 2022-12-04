@@ -1,6 +1,6 @@
-from newsTracker import Configuration
-from newsTracker.google import *
-from newsTracker.reddit import *
+from NewsTracker import Configuration
+from NewsTracker.Google import *
+from NewsTracker.Reddit import *
 
 config = Configuration.load_from(".env")
 
