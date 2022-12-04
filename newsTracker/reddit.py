@@ -1,6 +1,8 @@
+from NewsTracker import Configuration
+
 import praw
 import csv
-from NewsTracker.Google import *
+from os.path import join
 
 
 ##### WorkInProgress ######
@@ -18,7 +20,7 @@ class RedditAnalyzer:
         self.api = praw.Reddit(user_agent=username, 
                                client_id=client_id,
                                client_secret=client_secret,
-                               redirect_url=redirect_url + 'authorize_callback')
+                               redirect_url=join(redirect_url, 'authorize_callback'))
 
         self.submissions = submissions # the list of all reddits's submissions objects related to the topic
         self.num_comments = 0
