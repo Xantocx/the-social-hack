@@ -1,4 +1,6 @@
 google-api-python-client
 praw
 tweepy
+nltk
+vaderSentiment
 git+https://github.com/twintproject/twint.git@origin/master#egg=twint # twint, but working

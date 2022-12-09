@@ -2,6 +2,7 @@ from NewsTracker import Configuration
 
 import praw
 import csv
+from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
 from os.path import join
 
 
@@ -22,6 +23,7 @@ class RedditAnalyzer:
                                client_secret=client_secret,
                                redirect_url=join(redirect_url, 'authorize_callback'))
 
+        self.sia = SIA() # vader sentiment analysis tool
         self.submissions = submissions # the list of all reddits's submissions objects related to the topic
         self.num_comments = 0
         self.avg_upvote_ratio = 0
