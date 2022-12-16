@@ -23,18 +23,13 @@ class GoogleSearch:
         self.config = config
         self.search_site = site
 
-        self.service = build("customsearch", "v1", developerKey=self.api_key)
+        self.service = build("customsearch", "v1", developerKey=config.google_api_key)
         self.search_engine = self.service.cse()
-
-    @property
-    def api_key(self) -> str:
-        return self.config.google_api_key
 
     @property
     def search_engine_id(self) -> str:
         return self.config.search_engine_id
 
-    @property
     def search_modifier(self) -> str:
         return "" if self.search_site is None else f"site:{self.search_site}"
 
