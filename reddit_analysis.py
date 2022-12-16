@@ -7,36 +7,24 @@ config = Configuration.load_from(".env")
 reddit_search = GoogleSearch(config, "reddit.com")
 reddit_analyzer = RedditAnalyzer(config)
 
-results = reddit_search.search("quantum computers", num=10)
+# error whenever >10 search results are requested
+results = reddit_search.search("ukraine war", num=10)
 
-
-subs = []
+group_subs = []
+submissions = []
 
 for result in results:
-    subs.append(reddit_analyzer.get_submissions_from_URL(result.url))
+    group_subs.append(reddit_analyzer.get_submissions_from_URL(result.url))
 
-
-## Playing with NLTK
-## -----------------
-headlines = []
-
-for sub in subs:
+for sub in group_subs:
     for s in sub:
-        headlines.append(s.title)
-        print(s.title)
+        submissions.append(s)
     if len(sub)<1:
-        subs.remove(sub)
-
+        submissions.remove(s)
     pass
 
-pol_results = []
-
-for line in headlines:
-    pol_score = reddit_analyzer.sia.polarity_scores(line)
-    pol_score['headline'] = line
-    pol_results.append(pol_score)
-
-
-print(pol_results)
 
 #reddit_analyzer.write_to_csv_stats(subs)
+
+pol_results = reddit_analyzer.get_polarity_results(submissions)
+reddit_analyzer.df_from_records(pol_results, to_csv=False, plot=True)

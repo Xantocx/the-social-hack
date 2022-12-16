@@ -1,4 +1,5 @@
 from NewsTracker import Configuration
+from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
 from NewsTracker.URLAnalyzer import URLAnalyzer
 from NewsTracker.Google import GoogleSearch
 
@@ -97,6 +98,7 @@ class TwitterAnalyzer:
         self.auth   = tweepy.OAuth2BearerHandler(token)
         self.client = tweepy.Client(token)
         self.api    = tweepy.API(self.auth)
+        self.sia = SIA() # vader sentiment analysis tool
 
         self.google = GoogleSearch(self.config, "twitter.com")
 

@@ -7,3 +7,7 @@ git+https://github.com/twintproject/twint.git@origin/master#egg=twint # twint, b
 pandas
 nltk
 scikit-learn
+numpy
+matplotlib.pyplot
+seaborn
+csv
