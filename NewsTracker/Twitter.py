@@ -112,7 +112,7 @@ class TwitterAnalyzer:
         # url_analyser = URLAnalyzer(url)
         # title = url_analyser.title
 
-        twitter_search = self.search(url, limit=10)
+        twitter_search = self.search(url, limit=100)
 
         related_tweets = []
         for tweet in twitter_search:
