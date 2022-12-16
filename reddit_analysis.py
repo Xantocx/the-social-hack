@@ -2,13 +2,13 @@ from NewsTracker.Config import Configuration
 from NewsTracker.Google import GoogleSearch
 from NewsTracker.Reddit import RedditAnalyzer
 
+config = Configuration.load_from(".env")
 
 reddit_search = GoogleSearch(config, "reddit.com")
 reddit_analyzer = RedditAnalyzer(config)
 
 # error whenever >10 search results are requested
 results = reddit_search.search("ukraine war", num=10)
-
 
 group_subs = []
 submissions = []
