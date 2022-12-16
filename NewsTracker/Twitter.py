@@ -1,4 +1,5 @@
 from NewsTracker import Configuration
+from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
 
 import tweepy
 import twint
@@ -10,6 +11,7 @@ class TwitterAnalyzer:
         self.auth   = tweepy.OAuth2BearerHandler(bearer_token)
         self.client = tweepy.Client(bearer_token)
         self.api    = tweepy.API(self.auth)
+        self.sia = SIA() # vader sentiment analysis tool
 
     @classmethod
     def create_from(cls, config: Configuration):

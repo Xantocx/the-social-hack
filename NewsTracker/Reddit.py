@@ -4,6 +4,13 @@ import praw
 import csv
 from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
 from os.path import join
+from IPython import display
+from pprint import pprint
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set(style='darkgrid', context='talk', palette='Dark2')
 
 
 ##### WorkInProgress ######
@@ -128,3 +135,56 @@ class RedditAnalyzer:
     def explore(self, topic):
         # explore other submissions on reddit with the submission's headline
         pass
+
+
+    def get_polarity_results(self, subs):
+        headlines = set()
+        for s in subs:
+            headlines.add(s.title)
+            display.clear_output()
+
+        pol_results = []
+
+        for line in headlines:
+            pol_score = self.sia.polarity_scores(line)
+            pol_score['headline'] = line
+            pol_results.append(pol_score)
+
+        pprint(pol_results[:3], width=100)
+        return pol_results
+
+    def df_from_records(self, pol_results, to_csv=False, plot=False):
+    # WARNING: RN if there's 0 instances of a negative/positive/neutral label it yields an error
+    # acquired from https://www.learndatasci.com/tutorials/sentiment-analysis-reddit-headlines-pythons-nltk/ 
+        df = pd.DataFrame.from_records(pol_results)
+        df.head()
+
+        df['label'] = 0
+        df.loc[df['compound'] > 0.2, 'label'] = 1
+        df.loc[df['compound'] < -0.2, 'label'] = -1
+        df.head()
+
+        df2 = df[['headline', 'label']]
+
+        # Print positive and Negative Headlines
+        print("Positive headlines:\n")
+        pprint(list(df[df['label'] == 1].headline)[:5], width=200)
+        print("\nNegative headlines:\n")
+        pprint(list(df[df['label'] == -1].headline)[:5], width=200)
+        print(df.label.value_counts())
+        print(df.label.value_counts(normalize=True) * 100)
+
+        if to_csv:
+            df2.to_csv('reddit_headlines_labels.csv', mode='a', encoding='utf-8', index=False)
+
+        if plot:
+            fig, ax = plt.subplots(figsize=(8, 8))
+
+            counts = df.label.value_counts(normalize=True) * 100
+
+            sns.barplot(x=counts.index, y=counts, ax=ax)
+
+            ax.set_xticklabels(['Negative', 'Neutral', 'Positive'])
+            ax.set_ylabel("Percentage")
+
+            plt.show()
