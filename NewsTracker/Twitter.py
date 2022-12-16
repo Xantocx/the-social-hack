@@ -1,7 +1,9 @@
 from NewsTracker import Configuration
+from NewsTracker.URLAnalyzer import URLAnalyzer
 
 import tweepy
 import twint
+from pandas import DataFrame
 
 
 class TwitterAnalyzer:
@@ -15,14 +17,17 @@ class TwitterAnalyzer:
     def create_from(cls, config: Configuration):
         return TwitterAnalyzer(config.twitter_bearer_token)
 
-    def search(self, search_term: str, limit: int = 10, tmp_file: str = "tmp.json"):
-        # NOTE: THIS CLASS IS WORK IN PROGRESS
-        # We need some way to elegantly read the data from the temporary file and work with it poperly. Maybe we can also delete the temporary file? Not sure if that is desirable.
-        config = twint.Config()
+    def analyze_url(self, url: str) -> None:
+        url_analyser = URLAnalyzer(url)
+        title = url_analyser.title
+        print(title)
 
+    def search(self, search_term: str, limit: int = 10, hide_output: bool = True) -> DataFrame:
+        config = twint.Config()
         config.Search = search_term
         config.Limit = limit
-        config.Store_json = True
-        config.Output = tmp_file
-
+        config.Pandas= True
+        config.Hide_output = hide_output
         twint.run.Search(config)
+
+        return twint.output.panda.Tweets_df
