@@ -19,21 +19,24 @@ class GoogleSearch:
         def __repr__(self) -> str:
             return f"Google Search Result\n\tTitle: {self.title}\n\tURL: {self.url}"
 
-    def __init__(self, api_key: str, search_engine_id: str, site: str = None) -> None:
-        self.api_key: str = api_key
-        self.search_engine_id: str = search_engine_id
-        self.search_site: str = site
+    def __init__(self, config: Configuration, site: str = None) -> None:
+        self.config = config
+        self.search_site = site
 
-        self.service = build("customsearch", "v1", developerKey=api_key)
+        self.service = build("customsearch", "v1", developerKey=self.api_key)
         self.search_engine = self.service.cse()
+
+    @property
+    def api_key(self) -> str:
+        return self.config.google_api_key
+
+    @property
+    def search_engine_id(self) -> str:
+        return self.config.search_engine_id
 
     @property
     def search_modifier(self) -> str:
         return "" if self.search_site is None else f"site:{self.search_site}"
-
-    @classmethod
-    def create_from(cls, config: Configuration, site: str = None):
-        return GoogleSearch(config.google_api_key, config.search_engine_id, site)
 
     def search(self, search_term: str, **kwargs) -> List[SearchResult]:
         search_term = f"{search_term} {self.search_modifier}"

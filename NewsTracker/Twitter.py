@@ -1,30 +1,37 @@
 from NewsTracker import Configuration
 from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
+from NewsTracker.URLAnalyzer import URLAnalyzer
+from NewsTracker.Google import GoogleSearch
 
 import tweepy
 import twint
+from pandas import DataFrame
 
 
 class TwitterAnalyzer:
 
-    def __init__(self, bearer_token: str) -> None:
-        self.auth   = tweepy.OAuth2BearerHandler(bearer_token)
-        self.client = tweepy.Client(bearer_token)
+    def __init__(self, config: Configuration) -> None:
+        self.config = config
+
+        self.auth   = tweepy.OAuth2BearerHandler(config.bearer_token)
+        self.client = tweepy.Client(config.bearer_token)
         self.api    = tweepy.API(self.auth)
         self.sia = SIA() # vader sentiment analysis tool
 
-    @classmethod
-    def create_from(cls, config: Configuration):
-        return TwitterAnalyzer(config.twitter_bearer_token)
+        self.google = GoogleSearch(self.config, "twitter.com")
 
-    def search(self, search_term: str, limit: int = 10, tmp_file: str = "tmp.json"):
-        # NOTE: THIS CLASS IS WORK IN PROGRESS
-        # We need some way to elegantly read the data from the temporary file and work with it poperly. Maybe we can also delete the temporary file? Not sure if that is desirable.
+    def analyze_url(self, url: str) -> None:
+        url_analyser = URLAnalyzer(url)
+
+        title = url_analyser.title
+        print(title)
+
+    def search(self, search_term: str, limit: int = 10, hide_output: bool = True) -> DataFrame:
         config = twint.Config()
-
         config.Search = search_term
         config.Limit = limit
-        config.Store_json = True
-        config.Output = tmp_file
-
+        config.Pandas= True
+        config.Hide_output = hide_output
         twint.run.Search(config)
+
+        return twint.output.panda.Tweets_df

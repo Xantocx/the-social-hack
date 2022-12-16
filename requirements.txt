@@ -4,3 +4,6 @@ tweepy
 nltk
 vaderSentiment
 git+https://github.com/twintproject/twint.git@origin/master#egg=twint # twint, but working
+pandas
+nltk
+scikit-learn
