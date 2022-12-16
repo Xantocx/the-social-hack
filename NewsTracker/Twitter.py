@@ -1,5 +1,6 @@
 from NewsTracker import Configuration
 from NewsTracker.URLAnalyzer import URLAnalyzer
+from NewsTracker.Google import GoogleSearch
 
 import tweepy
 import twint
@@ -8,17 +9,18 @@ from pandas import DataFrame
 
 class TwitterAnalyzer:
 
-    def __init__(self, bearer_token: str) -> None:
-        self.auth   = tweepy.OAuth2BearerHandler(bearer_token)
-        self.client = tweepy.Client(bearer_token)
+    def __init__(self, config: Configuration) -> None:
+        self.config = config
+
+        self.auth   = tweepy.OAuth2BearerHandler(config.bearer_token)
+        self.client = tweepy.Client(config.bearer_token)
         self.api    = tweepy.API(self.auth)
 
-    @classmethod
-    def create_from(cls, config: Configuration):
-        return TwitterAnalyzer(config.twitter_bearer_token)
+        self.google = GoogleSearch(self.config, "twitter.com")
 
     def analyze_url(self, url: str) -> None:
         url_analyser = URLAnalyzer(url)
+
         title = url_analyser.title
         print(title)
 

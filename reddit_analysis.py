@@ -4,8 +4,8 @@ from NewsTracker.Reddit import RedditAnalyzer
 
 config = Configuration.load_from(".env")
 
-reddit_search = GoogleSearch.create_from(config, "reddit.com")
-reddit_analyzer = RedditAnalyzer.create_from(config)
+reddit_search = GoogleSearch(config, "reddit.com")
+reddit_analyzer = RedditAnalyzer(config)
 
 results = reddit_search.search("quantum computers", num=10)
 

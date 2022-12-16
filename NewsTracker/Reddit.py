@@ -10,18 +10,15 @@ from os.path import join
 
 class RedditAnalyzer:
 
-    def __init__(self, 
-                 username: str,
-                 client_id: str,
-                 client_secret: str,
-                 redirect_url: str,
-                 submissions = []) -> None:
+    def __init__(self, config: Configuration, submissions = []) -> None:
+
+        self.config = config
 
         # Reddit API Object
-        self.api = praw.Reddit(user_agent=username, 
-                               client_id=client_id,
-                               client_secret=client_secret,
-                               redirect_url=join(redirect_url, 'authorize_callback'))
+        self.api = praw.Reddit(user_agent=config.reddit_username, 
+                               client_id=config.reddit_client_id,
+                               client_secret=config.reddit_client_secret,
+                               redirect_url=join(config.reddit_redirect_url, 'authorize_callback'))
 
         self.sia = SIA() # vader sentiment analysis tool
         self.submissions = submissions # the list of all reddits's submissions objects related to the topic
@@ -29,14 +26,6 @@ class RedditAnalyzer:
         self.avg_upvote_ratio = 0
 
         self.update_stats()
-
-    @classmethod
-    def create_from(cls, config: Configuration, submissions = []):
-        return RedditAnalyzer(config.reddit_username,
-                              config.reddit_client_id,
-                              config.reddit_client_secret,
-                              config.reddit_redirect_url,
-                              submissions)
 
     # get different submissions from a given URL on reddit (https://www.theguardian.co.uk...)
     def get_submissions_from_non_reddit_url(self, url):
