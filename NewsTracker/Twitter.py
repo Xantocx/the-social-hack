@@ -5,18 +5,46 @@ from NewsTracker.Google import GoogleSearch
 import tweepy
 import twint
 import json
+import sys
 
 from typing import List, Tuple
 from enum import Enum
 from json import JSONEncoder
 from datetime import datetime, timedelta
+from io import StringIO 
 
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from pandas import DataFrame
+from tqdm import tqdm
 
 
 # HELPFUL TWINT REFERENCE:
 # https://github.com/twintproject/twint/wiki/Configuration
+
+
+class TwintCapturing(list):
+
+    def __enter__(self):
+        self._stdout = sys.stdout
+        sys.stdout = self._stringio = StringIO()
+        return self
+
+    def __exit__(self, *args):
+        self.extend(self._stringio.getvalue().splitlines())
+        del self._stringio    # free up some memory
+        sys.stdout = self._stdout
+
+    @classmethod
+    def search(cls, config: twint.Config):
+        config.Pandas = True
+
+        with cls() as _:
+            try:
+                twint.run.Search(config)
+            except:
+                return DataFrame()
+
+        return twint.output.panda.Tweets_df
 
 
 class TwitterAnalyzer:
@@ -29,7 +57,8 @@ class TwitterAnalyzer:
                             "Username", 
                             "Date", 
                             "Text", 
-                            "URL", 
+                            "URL",
+                            "Origin", 
                             "Likes", 
                             "Replies", 
                             "Retweets", 
@@ -172,6 +201,10 @@ class TwitterAnalyzer:
             return str(datetime.strptime(self.date, '%Y-%m-%d %H:%M:%S') - timedelta(days=1)).split()[0]
 
         @property
+        def childern(self) -> List:
+            return self.replies + self.retweets + self.quotes
+
+        @property
         def dataframe_row(self) -> List:
             return [
                 self.tweet_id,
@@ -180,6 +213,7 @@ class TwitterAnalyzer:
                 self.date,
                 self.text,
                 self.url,
+                self._origin,
                 self.stats.like_count,
                 self.stats.reply_count,
                 self.stats.retweet_count,
@@ -272,27 +306,34 @@ class TwitterAnalyzer:
 
         self.google = GoogleSearch(self.config, "twitter.com")
 
-    def load_tweets_from_file(self, filename: str) -> List[Tweet]:
-        with open(filename, "r") as file:
-            json_list = json.load(file)
-        tweets = [Tweet.from_dict(tweet) for tweet in json_list]
-        return tweets
-
-    def store_tweets_for_url(self, url: str, filename: str, limit: int = 100, recusion_depth = 1) -> None:
+    def store_tweets_for_url(self, url: str, filename: str, limit: int = 100, recusion_depth = 1) -> Tuple[List[Tweet], List[Tweet]]:
         parent_tweets, all_tweets = self.get_tweets_for_url(url, limit, recusion_depth)
         with open(filename, "w") as file:
             json.dump(parent_tweets, file, cls=TweetEncoder)
-        return all_tweets
+        return parent_tweets, all_tweets
+
+    def load_tweets_from_file(self, filename: str) -> Tuple[List[Tweet], List[Tweet]]:
+        with open(filename, "r") as file:
+            json_list = json.load(file)
+        tweets = [Tweet.from_dict(tweet) for tweet in json_list]
+        return tweets, self.expand_parent_tweets(tweets)
 
     def get_tweets_for_url(self, url: str, limit: int = 100, recusion_depth = 1) -> Tuple[List[Tweet], List[Tweet]]:
+        print("Searching tweets with URL...", end=" ")
         parent_tweets = self.search(url, limit=limit)
+        print("Done.\n")
 
+        print("Finding related tweets...")
+        
         related_tweets = []
-        for tweet in parent_tweets:
-            related_tweets += self.get_related_tweets(tweet, limit, recusion_depth)
-        related_tweets += parent_tweets
-        print(len(related_tweets))
+        progress = tqdm(parent_tweets)
+        progress.set_description("Overall Progress")
 
+        for tweet in progress:
+            related_tweets += self.get_related_tweets(tweet, limit, recusion_depth)
+        print(f"Done.\n\nFound {len(related_tweets)} related tweets.")
+
+        related_tweets += parent_tweets
         return parent_tweets, related_tweets
 
         # url_analyser = URLAnalyzer(url)
@@ -303,7 +344,6 @@ class TwitterAnalyzer:
 
     def new_twint_config(self, hide_output: bool = True) -> twint.Config:
         c = twint.Config()
-        c.Pandas= True
         c.Hide_output = hide_output
         return c
 
@@ -312,9 +352,11 @@ class TwitterAnalyzer:
         c.Search = search_term
         c.Limit = limit
         if since: c.Since = since
-        twint.run.Search(c)
+        # twint.run.Search(c)
 
-        results = twint.output.panda.Tweets_df
+        results = TwintCapturing.search(c)
+
+        # results = twint.output.panda.Tweets_df
         return Tweet.parse_twint(results, TweetOrigin.SEARCH)
 
     def get_replies(self, tweet: Tweet, limit: int = 1000) -> List[Tweet]:
@@ -322,9 +364,11 @@ class TwitterAnalyzer:
         c.To = tweet.mention
         c.Since = tweet.search_date
         c.Limit = limit
-        twint.run.Search(c)
+        # twint.run.Search(c)
 
-        results = twint.output.panda.Tweets_df
+        results = TwintCapturing.search(c)
+
+        # results = twint.output.panda.Tweets_df
         if results.empty: return []
 
         filtered_results = results[results["conversation_id"] == tweet.conversation_id]
@@ -336,9 +380,11 @@ class TwitterAnalyzer:
         c.Since = tweet.search_date
         c.Native_retweets = True
         c.Limit = limit
-        twint.run.Search(c)
+        # twint.run.Search(c)
 
-        results = twint.output.panda.Tweets_df
+        results = TwintCapturing.search(c)
+
+        # results = twint.output.panda.Tweets_df
         if results.empty: return []
 
         filtered_results = results[results["retweet_id"] == tweet.tweet_id]
@@ -372,12 +418,6 @@ class TwitterAnalyzer:
         retweets = filter_tweets(self.get_retweets(tweet)) if tweet.stats.retweet_count > 0 else []
         quotes   = filter_tweets(self.get_quotes_twint(tweet, limit))
 
-        print()
-        print(len(quotes))
-        print(len(filter_tweets(self.get_quotes_tweepy(tweet, 10))))
-        print(tweet.tweet_id)
-        print()
-
         tweet.add_replies(replies)
         tweet.add_retweets(retweets)
         tweet.add_quotes(quotes)
@@ -387,11 +427,23 @@ class TwitterAnalyzer:
 
         results = []
         if recursion_depth > 0:
-            for recursive_tweet in tweets:
+
+            progress = tqdm(tweets, leave=False)
+            progress.set_description(f"Recursion Depth {recursion_depth}")
+
+            for recursive_tweet in progress:
                 results += self.get_related_tweets(recursive_tweet, limit, recursion_depth - 1, ignore_ids)
 
         return tweets + results
 
+    def expand_parent_tweets(self, parent_tweets: List[Tweet]) -> List[Tweet]:
+        if len(parent_tweets) == 0: return []
+
+        children = []
+        for tweet in parent_tweets:
+            children += tweet.childern
+        return parent_tweets + self.expand_parent_tweets(children)
+    
     def tweets_to_dataframe(self, tweets: List[Tweet]) -> DataFrame:
         data = [tweet.dataframe_row for tweet in tweets]
         return DataFrame(data, columns=Tweet.DATAFRAME_COLUMS)
