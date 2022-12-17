@@ -306,7 +306,7 @@ class TwitterAnalyzer:
 
         self.google = GoogleSearch(self.config, "twitter.com")
 
-    def store_tweets_for_url(self, url: str, filename: str, limit: int = 100, recusion_depth = 1) -> Tuple[List[Tweet], List[Tweet]]:
+    def store_tweets_for_url(self, url: str, filename: str, limit: int = 1000, recusion_depth = 0) -> Tuple[List[Tweet], List[Tweet]]:
         parent_tweets, all_tweets = self.get_tweets_for_url(url, limit, recusion_depth)
         with open(filename, "w") as file:
             json.dump(parent_tweets, file, cls=TweetEncoder)
@@ -318,22 +318,23 @@ class TwitterAnalyzer:
         tweets = [Tweet.from_dict(tweet) for tweet in json_list]
         return tweets, self.expand_parent_tweets(tweets)
 
-    def get_tweets_for_url(self, url: str, limit: int = 100, recusion_depth = 1) -> Tuple[List[Tweet], List[Tweet]]:
+    def get_tweets_for_url(self, url: str, limit: int = 1000, recusion_depth = 0) -> Tuple[List[Tweet], List[Tweet]]:
         print("Searching tweets with URL...", end=" ")
         parent_tweets = self.search(url, limit=limit)
         print("Done.\n")
 
         print("Finding related tweets...")
-        
+
         related_tweets = []
         progress = tqdm(parent_tweets)
         progress.set_description("Overall Progress")
 
         for tweet in progress:
             related_tweets += self.get_related_tweets(tweet, limit, recusion_depth)
+        related_tweets += parent_tweets
+
         print(f"Done.\n\nFound {len(related_tweets)} related tweets.")
 
-        related_tweets += parent_tweets
         return parent_tweets, related_tweets
 
         # url_analyser = URLAnalyzer(url)
@@ -352,11 +353,8 @@ class TwitterAnalyzer:
         c.Search = search_term
         c.Limit = limit
         if since: c.Since = since
-        # twint.run.Search(c)
 
         results = TwintCapturing.search(c)
-
-        # results = twint.output.panda.Tweets_df
         return Tweet.parse_twint(results, TweetOrigin.SEARCH)
 
     def get_replies(self, tweet: Tweet, limit: int = 1000) -> List[Tweet]:
@@ -364,11 +362,8 @@ class TwitterAnalyzer:
         c.To = tweet.mention
         c.Since = tweet.search_date
         c.Limit = limit
-        # twint.run.Search(c)
 
         results = TwintCapturing.search(c)
-
-        # results = twint.output.panda.Tweets_df
         if results.empty: return []
 
         filtered_results = results[results["conversation_id"] == tweet.conversation_id]
@@ -380,11 +375,8 @@ class TwitterAnalyzer:
         c.Since = tweet.search_date
         c.Native_retweets = True
         c.Limit = limit
-        # twint.run.Search(c)
 
         results = TwintCapturing.search(c)
-
-        # results = twint.output.panda.Tweets_df
         if results.empty: return []
 
         filtered_results = results[results["retweet_id"] == tweet.tweet_id]

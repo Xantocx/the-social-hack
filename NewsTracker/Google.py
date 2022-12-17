@@ -2,6 +2,7 @@ from NewsTracker import Configuration
 
 from googleapiclient.discovery import build
 from typing import List
+from math import ceil
 
 
 class GoogleSearch:
@@ -30,12 +31,37 @@ class GoogleSearch:
     def search_engine_id(self) -> str:
         return self.config.search_engine_id
 
+    @property
     def search_modifier(self) -> str:
         return "" if self.search_site is None else f"site:{self.search_site}"
 
     def search(self, search_term: str, **kwargs) -> List[SearchResult]:
-        search_term = f"{search_term} {self.search_modifier}"
-        results = self.search_engine.list(q=search_term, cx=self.search_engine_id, **kwargs).execute()
-        return GoogleSearch.SearchResult.parse(results["items"])
+
+        requested_results = kwargs["num"] if kwargs["num"] else 10
+        required_calls = 1
+
+        # calculate number of required calls
+        if requested_results > 100:
+            raise NotImplementedError("Google does not allow more than 100 results to be delivered.")
+        elif requested_results > 10:
+            kwargs["num"] = 10
+            required_calls = ceil(requested_results / 10)
+
+        # initial setup
+        results = []
+        kwargs["start"] = 1
+
+        while required_calls > 0:
+            # search
+            search_term = f"{search_term} {self.search_modifier}"
+            current_page = self.search_engine.list(q=search_term, cx=self.search_engine_id, **kwargs).execute()
+            results += GoogleSearchResult.parse(current_page["items"])
+
+            # find next page of results
+            required_calls -= 1
+            kwargs["start"] += 10
+            kwargs["num"] = min(requested_results - kwargs["start"] + 1, 10)
+
+        return results
 
 GoogleSearchResult = GoogleSearch.SearchResult
