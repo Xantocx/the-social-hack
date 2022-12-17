@@ -1,15 +1,18 @@
 from NewsTracker import Configuration
-from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
 from NewsTracker.URLAnalyzer import URLAnalyzer
 from NewsTracker.Google import GoogleSearch
 
 import tweepy
 import twint
-from pandas import DataFrame
-from typing import List
-from enum import Enum
 import json
-from json import JSONEncoder, JSONDecoder
+
+from typing import List, Tuple
+from enum import Enum
+from json import JSONEncoder
+from datetime import datetime, timedelta
+
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from pandas import DataFrame
 
 
 # HELPFUL TWINT REFERENCE:
@@ -21,15 +24,24 @@ class TwitterAnalyzer:
 
     class Tweet:
 
-        class TweetEncoder(JSONEncoder):
+        DATAFRAME_COLUMS = ["Tweet ID", 
+                            "Conversation ID", 
+                            "Username", 
+                            "Date", 
+                            "Text", 
+                            "URL", 
+                            "Likes", 
+                            "Replies", 
+                            "Retweets", 
+                            "Quotes",
+                            "Negative Sentiment Score",
+                            "Neutral Sentiment Score",
+                            "Positive Sentiment Score",
+                            "Compound Sentiment Score"]
 
+        class TweetEncoder(JSONEncoder):
             def default(self, obj):
                 return obj.__dict__ 
-
-        class TweetDecoder(JSONDecoder):
-
-            def __init__(self, *args, **kwargs):
-                json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
 
         class Origin(Enum):
             SEARCH = "search"
@@ -39,11 +51,17 @@ class TwitterAnalyzer:
 
         class Stats:
 
+            SIA = SentimentIntensityAnalyzer() # vader sentiment analysis tool
+
             # WORK-IN-PROGRESS
             def __init__(self, like_count:          int,
                                reply_count:         int, 
                                retweet_count:       int,
                                quote_count:         int  = 0,
+                               negative_sentiment:  bool = None,
+                               neutral_sentiment:   bool = None,
+                               positive_sentiment:  bool = None,
+                               coupound_sentiment:  bool = None,
                                request_reply_count: bool = False,
                                request_quote_count: bool = True) -> None:
 
@@ -59,27 +77,42 @@ class TwitterAnalyzer:
                 self.quote_count   = quote_count
 
                 # sentiment analysis
-                # WIP
+                self.negative_sentiment = negative_sentiment
+                self.neutral_sentiment  = neutral_sentiment
+                self.positive_sentiment = positive_sentiment
+                self.coupound_sentiment = coupound_sentiment
 
             @property
             def engagement_score(self) -> int:
                 return (self.like_count + 2 * self.retweet_count + 3 * self.reply_count + 4 * self.quote_count) / 10
 
+            @property
+            def is_positive(self) -> bool:
+                if self.coupound_sentiment:
+                    return self.coupound_sentiment > 0
+                return None
+
             def sentiment_analysis(self, text: str) -> None:
-                ... # WIP
+                polarity = TweetStats.SIA.polarity_scores(text)
+                self.negative_sentiment = polarity["neg"]
+                self.neutral_sentiment = polarity["neu"]
+                self.positive_sentiment = polarity["pos"]
+                self.coupound_sentiment = polarity["compound"]
 
             @classmethod
             def from_dict(cls, stats_dict):
-                stats = TweetStats(
+                return TweetStats(
                     like_count          = stats_dict["like_count"],
                     reply_count         = stats_dict["reply_count"],
                     retweet_count       = stats_dict["retweet_count"],
                     quote_count         = stats_dict["quote_count"],
+                    negative_sentiment  = stats_dict["negative_sentiment"],
+                    neutral_sentiment   = stats_dict["neutral_sentiment"],
+                    positive_sentiment  = stats_dict["positive_sentiment"],
+                    coupound_sentiment  = stats_dict["coupound_sentiment"],
                     request_reply_count = stats_dict["request_reply_count"],
                     request_quote_count = stats_dict["request_quote_count"]
                 )
-                # WIP: set sentiment analysis attributes
-                return stats
 
             @classmethod
             def parse_twint(cls, tweet: DataFrame):
@@ -115,7 +148,7 @@ class TwitterAnalyzer:
             self.tweet_id = tweet_id
             self.conversation_id = conversation_id
             self.username = username
-            self.date = date
+            self.date = str(datetime.strptime(date, '%Y-%m-%d %H:%M:%S'))
             self.text = text
             self.url = url
             self.stats = stats
@@ -133,6 +166,29 @@ class TwitterAnalyzer:
         @property
         def origin(self) -> Origin:
             return TweetOrigin(self._origin)
+
+        @property
+        def search_date(self) -> str:
+            return str(datetime.strptime(self.date, '%Y-%m-%d %H:%M:%S') - timedelta(days=1)).split()[0]
+
+        @property
+        def dataframe_row(self) -> List:
+            return [
+                self.tweet_id,
+                self.conversation_id,
+                self.username,
+                self.date,
+                self.text,
+                self.url,
+                self.stats.like_count,
+                self.stats.reply_count,
+                self.stats.retweet_count,
+                self.stats.quote_count,
+                self.stats.negative_sentiment,
+                self.stats.neutral_sentiment,
+                self.stats.positive_sentiment,
+                self.stats.coupound_sentiment
+            ]
 
         def add_replies(self, tweets: List) -> None:
             self.replies += tweets
@@ -178,7 +234,7 @@ class TwitterAnalyzer:
                     tweet_id        = tweet_info["id"],
                     conversation_id = tweet_info["conversation_id"],
                     username        = tweet_info["username"],
-                    date            = tweet_info["date"].split()[0],
+                    date            = tweet_info["date"],
                     text            = tweet_info["tweet"],
                     url             = tweet_info["link"],
                     origin          = origin,
@@ -196,7 +252,7 @@ class TwitterAnalyzer:
                     tweet_id        = status.id,
                     conversation_id = status.in_reply_to_status_id,
                     username        = status.user.screen_name,
-                    date            = str(status.created_at).split()[0],
+                    date            = str(status.created_at).split("+")[0],
                     text            = status.text,
                     url             = f"https://twitter.com/twitter/statuses/{status.id}",
                     origin          = origin,
@@ -211,9 +267,8 @@ class TwitterAnalyzer:
         token = config.twitter_bearer_token
 
         self.auth   = tweepy.OAuth2BearerHandler(token)
-        self.client = tweepy.Client(token)
-        self.api    = tweepy.API(self.auth)
-        self.sia = SIA() # vader sentiment analysis tool
+        self.client = tweepy.Client(token, wait_on_rate_limit=True)
+        self.api    = tweepy.API(self.auth, wait_on_rate_limit=True)
 
         self.google = GoogleSearch(self.config, "twitter.com")
 
@@ -221,16 +276,16 @@ class TwitterAnalyzer:
         with open(filename, "r") as file:
             json_list = json.load(file)
         tweets = [Tweet.from_dict(tweet) for tweet in json_list]
-        print(tweets)
+        return tweets
 
     def store_tweets_for_url(self, url: str, filename: str, limit: int = 100, recusion_depth = 1) -> None:
-        tweets = self.get_tweets_for_url(url, limit, recusion_depth)
+        parent_tweets, all_tweets = self.get_tweets_for_url(url, limit, recusion_depth)
         with open(filename, "w") as file:
-            json.dump(tweets, file, cls=TweetEncoder)
+            json.dump(parent_tweets, file, cls=TweetEncoder)
+        return all_tweets
 
-    def get_tweets_for_url(self, url: str, limit: int = 100, recusion_depth = 1) -> List[Tweet]:
+    def get_tweets_for_url(self, url: str, limit: int = 100, recusion_depth = 1) -> Tuple[List[Tweet], List[Tweet]]:
         parent_tweets = self.search(url, limit=limit)
-        return parent_tweets
 
         related_tweets = []
         for tweet in parent_tweets:
@@ -238,7 +293,7 @@ class TwitterAnalyzer:
         related_tweets += parent_tweets
         print(len(related_tweets))
 
-        return parent_tweets
+        return parent_tweets, related_tweets
 
         # url_analyser = URLAnalyzer(url)
         # title = url_analyser.title
@@ -252,10 +307,11 @@ class TwitterAnalyzer:
         c.Hide_output = hide_output
         return c
 
-    def search(self, search_term: str, limit: int = 10, hide_output: bool = True) -> List[Tweet]:
+    def search(self, search_term: str, limit: int = 10, since: str = None, hide_output: bool = True) -> List[Tweet]:
         c = self.new_twint_config(hide_output)
         c.Search = search_term
         c.Limit = limit
+        if since: c.Since = since
         twint.run.Search(c)
 
         results = twint.output.panda.Tweets_df
@@ -264,7 +320,7 @@ class TwitterAnalyzer:
     def get_replies(self, tweet: Tweet, limit: int = 1000) -> List[Tweet]:
         c = self.new_twint_config()
         c.To = tweet.mention
-        c.Since = tweet.date
+        c.Since = tweet.search_date
         c.Limit = limit
         twint.run.Search(c)
 
@@ -274,12 +330,34 @@ class TwitterAnalyzer:
         filtered_results = results[results["conversation_id"] == tweet.conversation_id]
         return Tweet.parse_twint(filtered_results, TweetOrigin.REPLY)
 
-    def get_retweets(self, tweet: Tweet) -> List[Tweet]:
-        results = self.api.get_retweets(tweet.tweet_id)
+    def get_retweets_twint(self, tweet: Tweet, limit: int = 1000) -> List[Tweet]:
+        c = self.new_twint_config()
+        c.All = tweet.mention
+        c.Since = tweet.search_date
+        c.Native_retweets = True
+        c.Limit = limit
+        twint.run.Search(c)
+
+        results = twint.output.panda.Tweets_df
+        if results.empty: return []
+
+        filtered_results = results[results["retweet_id"] == tweet.tweet_id]
+        return Tweet.parse_twint(filtered_results, TweetOrigin.REPLY)
+
+    def get_retweets(self, tweet: Tweet, limit: int = 1000) -> List[Tweet]:
+        try:
+            results = self.api.get_retweets(tweet.tweet_id)
+        except: # to bypass rate limit
+            return self.get_retweets_twint(tweet, limit)
         return Tweet.parse_tweepy(results, TweetOrigin.RETWEET)
 
-    def get_quotes(self, tweet: Tweet, limit: int = 10) -> List[Tweet]:
-        response = self.client.get_quote_tweets(tweet.tweet_id, max_results=limit)
+    def get_quotes_twint(self, tweet: Tweet, limit: int = 1000) -> List[Tweet]:
+        return self.search(f"url:{tweet.tweet_id}", limit=limit)
+        # return self.search(f"url:{tweet.tweet_id}", limit=limit, since=tweet.search_date)
+    
+    def get_quotes_tweepy(self, tweet: Tweet, limit: int = 10) -> List[Tweet]:
+        # use twint instead, this is rate limited as hell
+        response = self.client.get_quote_tweets(tweet.tweet_id, max_results=min(limit, 100))
         if not response.data: return []
 
         statuses = [self.api.get_status(tweet.id) for tweet in response.data]
@@ -291,8 +369,14 @@ class TwitterAnalyzer:
             return [tweet for tweet in tweets if tweet.tweet_id not in ignore_ids]
 
         replies  = filter_tweets(self.get_replies(tweet, limit))
-        retweets = filter_tweets(self.get_retweets(tweet))
-        quotes   = filter_tweets(self.get_quotes(tweet, limit))
+        retweets = filter_tweets(self.get_retweets(tweet)) if tweet.stats.retweet_count > 0 else []
+        quotes   = filter_tweets(self.get_quotes_twint(tweet, limit))
+
+        print()
+        print(len(quotes))
+        print(len(filter_tweets(self.get_quotes_tweepy(tweet, 10))))
+        print(tweet.tweet_id)
+        print()
 
         tweet.add_replies(replies)
         tweet.add_retweets(retweets)
@@ -307,6 +391,14 @@ class TwitterAnalyzer:
                 results += self.get_related_tweets(recursive_tweet, limit, recursion_depth - 1, ignore_ids)
 
         return tweets + results
+
+    def tweets_to_dataframe(self, tweets: List[Tweet]) -> DataFrame:
+        data = [tweet.dataframe_row for tweet in tweets]
+        return DataFrame(data, columns=Tweet.DATAFRAME_COLUMS)
+
+    def tweets_to_csv(self, tweets: List[Tweet], filename: str) -> None:
+        df = self.tweets_to_dataframe(tweets)
+        df.to_csv(filename)
 
 
 Tweet = TwitterAnalyzer.Tweet
