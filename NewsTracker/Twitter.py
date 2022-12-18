@@ -75,6 +75,8 @@ class TwitterAnalyzer:
 
     class Tweet:
 
+        SIA = SentimentIntensityAnalyzer() # vader sentiment analysis tool
+
         DATAFRAME_COLUMS = ["Tweet ID", 
                             "Conversation ID", 
                             "Username", 
@@ -104,95 +106,6 @@ class TwitterAnalyzer:
             RETWEET = "retweet"
             QUOTE = "quote"
 
-
-        class Stats:
-
-            SIA = SentimentIntensityAnalyzer() # vader sentiment analysis tool
-
-            # WORK-IN-PROGRESS
-            def __init__(self, like_count:          int,
-                               reply_count:         int, 
-                               retweet_count:       int,
-                               quote_count:         int  = 0,
-                               negative_sentiment:  bool = None,
-                               neutral_sentiment:   bool = None,
-                               positive_sentiment:  bool = None,
-                               compound_sentiment:  bool = None,
-                               request_reply_count: bool = False,
-                               request_quote_count: bool = True) -> None:
-
-                # lacking data request
-                # some data points cannot be provided by (all) APIs, so we approximate the value once we scraped for the according tweets
-                self.request_reply_count = request_reply_count
-                self.request_quote_count = request_quote_count
-
-                # basic stats
-                self.like_count    = like_count
-                self.reply_count   = reply_count
-                self.retweet_count = retweet_count
-                self.quote_count   = quote_count
-
-                # sentiment analysis
-                self.negative_sentiment = negative_sentiment
-                self.neutral_sentiment  = neutral_sentiment
-                self.positive_sentiment = positive_sentiment
-                self.compound_sentiment = compound_sentiment
-
-            @property
-            def engagement_score(self) -> int:
-                return (self.like_count + 2 * self.retweet_count + 3 * self.reply_count + 4 * self.quote_count) / 10
-
-            @property
-            def is_positive(self) -> bool:
-                if self.compound_sentiment:
-                    return self.compound_sentiment > 0
-                return None
-
-            def sentiment_analysis(self, text: str) -> None:
-                polarity = TweetStats.SIA.polarity_scores(text)
-                self.negative_sentiment = polarity["neg"]
-                self.neutral_sentiment = polarity["neu"]
-                self.positive_sentiment = polarity["pos"]
-                self.compound_sentiment = polarity["compound"]
-
-            @classmethod
-            def from_dict(cls, stats_dict):
-                return TweetStats(
-                    like_count          = stats_dict["like_count"],
-                    reply_count         = stats_dict["reply_count"],
-                    retweet_count       = stats_dict["retweet_count"],
-                    quote_count         = stats_dict["quote_count"],
-                    negative_sentiment  = stats_dict["negative_sentiment"],
-                    neutral_sentiment   = stats_dict["neutral_sentiment"],
-                    positive_sentiment  = stats_dict["positive_sentiment"],
-                    compound_sentiment  = stats_dict["compound_sentiment"],
-                    request_reply_count = stats_dict["request_reply_count"],
-                    request_quote_count = stats_dict["request_quote_count"]
-                )
-
-            @classmethod
-            def parse_twint(cls, tweet: DataFrame, origin):
-                stats = TwitterAnalyzer.Tweet.Stats(
-                    like_count    = tweet["nlikes"],
-                    reply_count   = tweet["nreplies"],
-                    retweet_count = tweet["nretweets"] if origin != TweetOrigin.RETWEET else 0
-                )
-                stats.sentiment_analysis(tweet["tweet"])
-                return stats
-
-            @classmethod
-            def parse_tweepy(cls, status, origin):
-                # find way to read reply count with twint instead
-                stats = TwitterAnalyzer.Tweet.Stats(
-                    like_count          = status.favorite_count,
-                    reply_count         = 0,
-                    retweet_count       = status.retweet_count if origin != TweetOrigin.RETWEET else 0,
-                    request_reply_count = True
-                )
-                stats.sentiment_analysis(status.text)
-                return stats
-
-
         def __init__(self, tweet_id: str, 
                            conversation_id: str, 
                            username: str, 
@@ -200,7 +113,16 @@ class TwitterAnalyzer:
                            text: str, 
                            url: str,
                            origin: Origin,
-                           stats: Stats) -> None:
+                           like_count:          int,
+                           reply_count:         int, 
+                           retweet_count:       int,
+                           quote_count:         int  = 0,
+                           negative_sentiment:  bool = None,
+                           neutral_sentiment:   bool = None,
+                           positive_sentiment:  bool = None,
+                           compound_sentiment:  bool = None,
+                           request_reply_count: bool = False,
+                           request_quote_count: bool = True) -> None:
 
             self.tweet_id = tweet_id
             self.conversation_id = conversation_id
@@ -208,13 +130,30 @@ class TwitterAnalyzer:
             self.date = str(datetime.strptime(date, '%Y-%m-%d %H:%M:%S'))
             self.text = text
             self.url = url
-            self.stats = stats
-
-            self.replies = []
-            self.retweets = []
-            self.quotes = []
-
             self._origin = origin.value
+
+            # basic stats (still not sure if all retweets should be zero-ed)
+            self.like_count    = like_count    if origin != TweetOrigin.RETWEET else 0
+            self.reply_count   = reply_count   if origin != TweetOrigin.RETWEET else 0
+            self.retweet_count = retweet_count if origin != TweetOrigin.RETWEET else 0
+            self.quote_count   = quote_count   if origin != TweetOrigin.RETWEET else 0
+
+            # sentiment analysis
+            self.negative_sentiment = negative_sentiment
+            self.neutral_sentiment  = neutral_sentiment
+            self.positive_sentiment = positive_sentiment
+            self.compound_sentiment = compound_sentiment
+
+            self.replies  = []
+            self.retweets = []
+            self.quotes   = []
+
+            # lacking data request
+            # some data points cannot be provided by (all) APIs, so we approximate the value once we scraped for the according tweets
+            self.request_reply_count = request_reply_count
+            self.request_quote_count = request_quote_count
+
+            self.update_sentiment()
 
         @property
         def mention(self) -> str:
@@ -223,6 +162,16 @@ class TwitterAnalyzer:
         @property
         def origin(self) -> Origin:
             return TweetOrigin(self._origin)
+
+        @property
+        def engagement_score(self) -> int:
+            return (self.like_count + 2 * self.retweet_count + 3 * self.reply_count + 4 * self.quote_count) / 10
+
+        @property
+        def is_positive(self) -> bool:
+            if self.compound_sentiment:
+                return self.compound_sentiment > 0
+            return None
 
         @property
         def search_date(self) -> str:
@@ -242,45 +191,83 @@ class TwitterAnalyzer:
                 self.text,
                 self.url,
                 self._origin,
-                self.stats.like_count,
-                self.stats.reply_count,
-                self.stats.retweet_count,
-                self.stats.quote_count,
-                self.stats.engagement_score,
-                self.stats.negative_sentiment,
-                self.stats.neutral_sentiment,
-                self.stats.positive_sentiment,
-                self.stats.compound_sentiment
+                self.like_count,
+                self.reply_count,
+                self.retweet_count,
+                self.quote_count,
+                self.engagement_score,
+                self.negative_sentiment,
+                self.neutral_sentiment,
+                self.positive_sentiment,
+                self.compound_sentiment
             ]
 
         def add_replies(self, tweets: List) -> None:
             self.replies += tweets
-            if self.stats.request_reply_count:
-                self.stats.replies = len(self.replies)
+            if self.request_reply_count:
+                self.reply_count = len(self.replies)
 
         def add_retweets(self, tweets: List) -> None:
             self.retweets += tweets
 
         def add_quotes(self, tweets: List) -> None:
             self.quotes += tweets
-            if self.stats.request_quote_count:
-                self.stats.quote_count = len(self.quotes)
+            if self.request_quote_count:
+                self.quote_count = len(self.quotes)
+
+        def update_sentiment(self) -> None:
+            polarity = Tweet.SIA.polarity_scores(self.text)
+            if self.negative_sentiment is None: self.negative_sentiment = polarity["neg"]
+            if self.neutral_sentiment  is None: self.neutral_sentiment  = polarity["neu"]
+            if self.positive_sentiment is None: self.positive_sentiment = polarity["pos"]
+            if self.compound_sentiment is None: self.compound_sentiment = polarity["compound"]
 
         def __repr__(self) -> str:
             return f"Tweet\n\tID: {self.tweet_id}\n\tUsername: {self.username}\n\tText: {self.text}\n\tURL: {self.url}\n"
 
         @classmethod
         def from_dict(cls, tweet_dict):
-            tweet = Tweet(
-                tweet_id        = tweet_dict["tweet_id"],
-                conversation_id = tweet_dict["conversation_id"],
-                username        = tweet_dict["username"],
-                date            = tweet_dict["date"],
-                text            = tweet_dict["text"],
-                url             = tweet_dict["url"],
-                origin          = TweetOrigin(tweet_dict["_origin"]),
-                stats           = TweetStats.from_dict(tweet_dict["stats"])
-            )
+
+            if "stats" in tweet_dict:
+                tweet = Tweet(
+                    tweet_id            = tweet_dict["tweet_id"],
+                    conversation_id     = tweet_dict["conversation_id"],
+                    username            = tweet_dict["username"],
+                    date                = tweet_dict["date"],
+                    text                = tweet_dict["text"],
+                    url                 = tweet_dict["url"],
+                    origin              = TweetOrigin(tweet_dict["_origin"]),
+                    like_count          = tweet_dict["stats"]["like_count"],
+                    reply_count         = tweet_dict["stats"]["reply_count"],
+                    retweet_count       = tweet_dict["stats"]["retweet_count"],
+                    quote_count         = tweet_dict["stats"]["quote_count"],
+                    negative_sentiment  = tweet_dict["stats"]["negative_sentiment"],
+                    neutral_sentiment   = tweet_dict["stats"]["neutral_sentiment"],
+                    positive_sentiment  = tweet_dict["stats"]["positive_sentiment"],
+                    compound_sentiment  = tweet_dict["stats"]["compound_sentiment"],
+                    request_reply_count = tweet_dict["stats"]["request_reply_count"],
+                    request_quote_count = tweet_dict["stats"]["request_quote_count"]
+                )
+            else:
+                tweet = Tweet(
+                    tweet_id            = tweet_dict["tweet_id"],
+                    conversation_id     = tweet_dict["conversation_id"],
+                    username            = tweet_dict["username"],
+                    date                = tweet_dict["date"],
+                    text                = tweet_dict["text"],
+                    url                 = tweet_dict["url"],
+                    origin              = TweetOrigin(tweet_dict["_origin"]),
+                    like_count          = tweet_dict["like_count"],
+                    reply_count         = tweet_dict["reply_count"],
+                    retweet_count       = tweet_dict["retweet_count"],
+                    quote_count         = tweet_dict["quote_count"],
+                    negative_sentiment  = tweet_dict["negative_sentiment"],
+                    neutral_sentiment   = tweet_dict["neutral_sentiment"],
+                    positive_sentiment  = tweet_dict["positive_sentiment"],
+                    compound_sentiment  = tweet_dict["compound_sentiment"],
+                    request_reply_count = tweet_dict["request_reply_count"],
+                    request_quote_count = tweet_dict["request_quote_count"]
+                )
 
             tweet.add_replies([Tweet.from_dict(reply) for reply in tweet_dict["replies"]])
             tweet.add_retweets([Tweet.from_dict(retweet) for retweet in tweet_dict["retweets"]])
@@ -292,7 +279,6 @@ class TwitterAnalyzer:
         def parse_twint(cls, tweet_data: DataFrame, origin: Origin):
             tweets = []
             for _, tweet_info in tweet_data.iterrows():
-                stats = TweetStats.parse_twint(tweet_info)
                 tweet = Tweet(
                     tweet_id        = tweet_info["id"],
                     conversation_id = tweet_info["conversation_id"],
@@ -301,7 +287,9 @@ class TwitterAnalyzer:
                     text            = tweet_info["tweet"],
                     url             = tweet_info["link"],
                     origin          = origin,
-                    stats           = stats
+                    like_count      = tweet_info["nlikes"],
+                    reply_count     = tweet_info["nreplies"],
+                    retweet_count   = tweet_info["nretweets"]
                 )
                 tweets.append(tweet)
             return tweets
@@ -310,16 +298,18 @@ class TwitterAnalyzer:
         def parse_tweepy(cls, statuses, origin: Origin):
             tweets = []
             for status in statuses:
-                stats = TweetStats.parse_tweepy(status)
                 tweet = Tweet(
-                    tweet_id        = status.id,
-                    conversation_id = status.in_reply_to_status_id,
-                    username        = status.user.screen_name,
-                    date            = str(status.created_at).split("+")[0],
-                    text            = status.text,
-                    url             = f"https://twitter.com/twitter/statuses/{status.id}",
-                    origin          = origin,
-                    stats           = stats
+                    tweet_id            = status.id,
+                    conversation_id     = status.in_reply_to_status_id,
+                    username            = status.user.screen_name,
+                    date                = str(status.created_at).split("+")[0],
+                    text                = status.text,
+                    url                 = f"https://twitter.com/twitter/statuses/{status.id}",
+                    origin              = origin,
+                    like_count          = status.favorite_count,
+                    reply_count         = 0,
+                    retweet_count       = status.retweet_count,
+                    request_reply_count = True
                 )
                 tweets.append(tweet)
             return tweets
@@ -352,19 +342,19 @@ class TwitterAnalyzer:
 
         @property
         def likes(self) -> int:
-            return sum(tweet.stats.like_count for tweet in self.tweets)
+            return sum(tweet.like_count for tweet in self.tweets)
 
         @property
         def replies(self) -> int:
-            return sum(tweet.stats.reply_count for tweet in self.tweets)
+            return sum(tweet.reply_count for tweet in self.tweets)
 
         @property
         def retweets(self) -> int:
-            return sum(tweet.stats.retweet_count for tweet in self.tweets)
+            return sum(tweet.retweet_count for tweet in self.tweets)
 
         @property
         def quotes(self) -> int:
-            return sum(tweet.stats.quote_count for tweet in self.tweets)
+            return sum(tweet.quote_count for tweet in self.tweets)
 
         @property
         def engagement_score(self) -> int:
@@ -372,19 +362,19 @@ class TwitterAnalyzer:
 
         @property
         def negative_sentiment(self) -> float:
-            return sum(tweet.stats.negative_sentiment for tweet in self.tweets) / self.tweet_count
+            return sum(tweet.negative_sentiment for tweet in self.tweets) / self.tweet_count
 
         @property
         def neutral_sentiment(self) -> float:
-            return sum(tweet.stats.neutral_sentiment for tweet in self.tweets) / self.tweet_count
+            return sum(tweet.neutral_sentiment for tweet in self.tweets) / self.tweet_count
 
         @property
         def positive_sentiment(self) -> float:
-            return sum(tweet.stats.neutral_sentiment for tweet in self.tweets) / self.tweet_count
+            return sum(tweet.neutral_sentiment for tweet in self.tweets) / self.tweet_count
 
         @property
         def compound_sentiment(self) -> float:
-            return sum(tweet.stats.compound_sentiment for tweet in self.tweets) / self.tweet_count
+            return sum(tweet.compound_sentiment for tweet in self.tweets) / self.tweet_count
 
         @property
         def dataframe_row(self) -> List:
@@ -454,13 +444,18 @@ class TwitterAnalyzer:
         # user graphs
         self.engagement_by_sentiment_users_graph(users, filename("total_engagement_by_sentiment_users.png"), filename("avg_engagement_by_sentiment_users.png"))
 
+    def average_engagement(self, tweets: List[Tweet]) -> None:
+        num_tweets = len(list(filter(lambda tweet: tweet.origin != TweetOrigin.RETWEET, tweets)))
+        if num_tweets == 0: return 0 
+        return sum(tweet.engagement_score for tweet in tweets) / num_tweets
+
     def tweets_by_origin(self, tweets: List[Tweet]) -> Tuple[List[str], List[List[Tweet]]]:
         origin_order = [origin.value for origin in TweetOrigin]
         return origin_order, [list(filter(lambda tweet: tweet._origin == origin, tweets)) for origin in origin_order]
 
     def tweets_by_sentiment(self, tweets: List[Tweet]) -> Tuple[List[float], List[List[Tweet]]]:
         sentiment_order = [x/10 for x in range(-10, 11)]
-        return sentiment_order, [list(filter(lambda tweet: x-0.05 <= tweet.stats.compound_sentiment < x+0.05, tweets)) for x in sentiment_order]
+        return sentiment_order, [list(filter(lambda tweet: x-0.05 <= tweet.compound_sentiment < x+0.05, tweets)) for x in sentiment_order]
 
     def users_by_sentiment(self, users: Dict[str, User]) -> Tuple[List[float], List[List[User]]]:
         sentiment_order = [x/10 for x in range(-10, 11)]
@@ -479,7 +474,7 @@ class TwitterAnalyzer:
 
     def tweets_by_sentiment_graph(self, tweets: List[Tweet], filename: str) -> None:
         sentiment_x = [x/10 for x in range(-10, 11)]
-        sentiment_y = [len(list(filter(lambda tweet: x-0.05 <= tweet.stats.compound_sentiment < x+0.05, tweets))) for x in sentiment_x]
+        sentiment_y = [len(list(filter(lambda tweet: x-0.05 <= tweet.compound_sentiment < x+0.05, tweets))) for x in sentiment_x]
 
         plt.plot(sentiment_x, sentiment_y)
         plt.title("Tweets by Sentiment")
@@ -490,7 +485,7 @@ class TwitterAnalyzer:
 
     def sentiment_by_origin_graph(self, tweets: List[Tweet], filename: str) -> None:
         origins_x, tweets_by_origin = self.tweets_by_origin(tweets)
-        sentiment_y = [sum(tweet.stats.compound_sentiment for tweet in origin_tweets) / max(len(origin_tweets), 1) for origin_tweets in tweets_by_origin]
+        sentiment_y = [sum(tweet.compound_sentiment for tweet in origin_tweets) / max(len(origin_tweets), 1) for origin_tweets in tweets_by_origin]
 
         plt.bar(origins_x, sentiment_y)
         plt.title("Sentiment by Origin")
@@ -501,8 +496,9 @@ class TwitterAnalyzer:
 
     def engagement_by_origin_graph(self, tweets: List[Tweet], total_filename: str, avg_filename: str) -> None:
         origin_x, tweets_by_origin = self.tweets_by_origin(tweets)
-        total_engagement_y = [sum(tweet.stats.engagement_score for tweet in origin_tweets) for origin_tweets in tweets_by_origin]
-        avg_engagement_y   = [sum(tweet.stats.engagement_score for tweet in origin_tweets) / max(len(origin_tweets), 1) for origin_tweets in tweets_by_origin]
+
+        total_engagement_y = [sum(tweet.engagement_score for tweet in origin_tweets) for origin_tweets in tweets_by_origin]
+        avg_engagement_y   = [self.average_engagement(origin_tweets) for origin_tweets in tweets_by_origin]
 
         # based on sentiment, how high is engagement score
         plt.bar(origin_x, total_engagement_y)
@@ -522,8 +518,8 @@ class TwitterAnalyzer:
 
     def engagement_by_sentiment_tweets_graph(self, tweets: List[Tweet], total_filename: str, avg_filename: str) -> None:
         sentiment_x, tweets_by_sentiment = self.tweets_by_sentiment(tweets)
-        total_engagement_y = [sum(tweet.stats.engagement_score for tweet in sentiment_tweets) for sentiment_tweets in tweets_by_sentiment]
-        avg_engagement_y   = [sum(tweet.stats.engagement_score for tweet in sentiment_tweets) / max(len(sentiment_tweets), 1) for sentiment_tweets in tweets_by_sentiment]
+        total_engagement_y = [sum(tweet.engagement_score for tweet in sentiment_tweets) for sentiment_tweets in tweets_by_sentiment]
+        avg_engagement_y   = [self.average_engagement(sentiment_tweets) for sentiment_tweets in tweets_by_sentiment]
 
         # based on sentiment, how high is engagement score
         plt.plot(sentiment_x, total_engagement_y)
@@ -568,8 +564,11 @@ class TwitterAnalyzer:
         return parent_tweets, all_tweets
 
     def get_tweets_for_url(self, url: str, limit: int = 1000, recusion_depth = 0) -> Tuple[List[Tweet], List[Tweet]]:
-        print("Searching tweets with URL...", end=" ")
-        parent_tweets = self.search(f"url:{url}", limit=limit)
+        return self.get_tweets(f"url:{url}", limit, recusion_depth)
+
+    def get_tweets(self, search_term: str, limit: int = 1000, recusion_depth = 0) -> Tuple[List[Tweet], List[Tweet]]:
+        print(f"Searching tweets with using search term '{search_term}'...", end=" ")
+        parent_tweets = self.search(search_term, limit=limit, repetitions=10)
         print("Done.\n")
 
         print("Finding related tweets...")
@@ -681,9 +680,9 @@ class TwitterAnalyzer:
         def filter_tweets(tweets: List[Tweet]):
             return [tweet for tweet in tweets if tweet.tweet_id not in ignore_ids]
 
-        replies  = filter_tweets(self.get_replies(tweet, limit))
-        retweets = filter_tweets(self.get_retweets(tweet)) if tweet.stats.retweet_count > 0 else []
-        quotes   = filter_tweets(self.get_quotes_twint(tweet, limit))
+        replies  = filter_tweets(self.get_replies(tweet, limit))      if tweet.origin != TweetOrigin.RETWEET else [] # performance optimation under the assumption that retweets don't have replies, as they are part of the original tweet
+        retweets = filter_tweets(self.get_retweets(tweet))            if tweet.retweet_count > 0             else []
+        quotes   = filter_tweets(self.get_quotes_twint(tweet, limit)) if tweet.origin != TweetOrigin.RETWEET else [] # performance optimation under the assumption that retweets don't have replies, as they are part of the original tweet
 
         tweet.add_replies(replies)
         tweet.add_retweets(retweets)
@@ -741,7 +740,6 @@ class TwitterAnalyzer:
 Tweet = TwitterAnalyzer.Tweet
 Tweets = List[Tweet]
 TweetOrigin = Tweet.Origin
-TweetStats = Tweet.Stats
 TweetEncoder = Tweet.TweetEncoder
 TwitterUser = TwitterAnalyzer.User
 TwitterUsers = List[TwitterUser]
