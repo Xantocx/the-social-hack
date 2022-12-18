@@ -441,58 +441,93 @@ class TwitterAnalyzer:
 
         users = self.get_users_from_tweets(all_tweets)
 
-        # only temporarily disabled for testing!
-        # self.tweets_to_csv(all_tweets, filename("tweets.csv"))
-        # self.users_to_csv(users, filename("users.csv"))
-
-        # tweet origin
-        origins   = [tweet._origin for tweet in all_tweets]
-        origins_x = [origin.value for origin in TweetOrigin]
-        origins_y = [len(list(filter(lambda tweet_origin: tweet_origin == origin, origins))) for origin in origins_x]
-        plt.bar(origins_x, origins_y)
-        plt.xlabel('Origin')
-        plt.ylabel('Number of Tweets')
-        plt.savefig(filename("origin.png"))
-        plt.clf()
+        self.tweets_to_csv(all_tweets, filename("tweets.csv"))
+        self.users_to_csv(users, filename("users.csv"))
         
-        # compound sentiment visualization
-        compound_sentiment = [tweet.stats.compound_sentiment for tweet in all_tweets]
-        compound_x = [x/10 for x in range(-10, 11)]
-        compound_y = [len(list(filter(lambda sentiment: x-0.05 <= sentiment < x+0.05, compound_sentiment))) for x in compound_x]
-        plt.plot(compound_x, compound_y)
-        plt.xlabel('Compound Sentiment')
-        plt.ylabel('Number of Tweets')
-        plt.savefig(filename("compound_sentiment.png"))
-        plt.clf()
+        # tweet graphs
+        self.tweets_by_origin_graph(all_tweets, filename("tweets_by_origin.png"))
+        self.tweets_by_sentiment_graph(all_tweets, filename("tweets_by_sentiment.png"))
+        self.sentiment_by_origin_graph(all_tweets, filename("sentiment_by_origin.png"))
+        self.engagement_by_sentiment_graph(all_tweets, filename("total_engagement_by_sentiment_tweets.png"), filename("avg_engagement_by_sentiment_tweets.png"))
+
+        # user graphs
+        sentiment_x, users_by_sentiment = self.users_by_sentiment(users)
+        total_engagement_y = [sum(user.engagement_score for user in sentiment_users) for sentiment_users in users_by_sentiment]
+        avg_engagement_y   = [sum(user.engagement_score for user in sentiment_users) / max(len(sentiment_users), 1) for sentiment_users in users_by_sentiment]
 
         # based on sentiment, how high is engagement score
-        compound_x = [x/10 for x in range(-10, 11)]
-        tweets_by_sentiment = [list(filter(lambda tweet: x-0.05 <= tweet.stats.compound_sentiment < x+0.05, all_tweets)) for x in compound_x]
-        engagement_y = [sum(tweet.stats.engagement_score for tweet in tweets) for tweets in tweets_by_sentiment]
-        plt.plot(compound_x, engagement_y)
+        plt.plot(sentiment_x, total_engagement_y)
         plt.xlabel('Compound Sentiment')
         plt.ylabel('Combined Engagement')
-        plt.savefig(filename("engagement_vs_sentiment.png"))
+        plt.savefig(filename("total_engagement_by_sentiment_users.png"))
         plt.clf()
 
         # based on sentiment, how high is the average engagement score
-        compound_x = [x/10 for x in range(-10, 11)]
-        tweets_by_sentiment = [list(filter(lambda tweet: x-0.05 <= tweet.stats.compound_sentiment < x+0.05, all_tweets)) for x in compound_x]
-        engagement_y = [sum(tweet.stats.engagement_score for tweet in tweets) / max(len(tweets), 1) for tweets in tweets_by_sentiment]
-        plt.plot(compound_x, engagement_y)
+        plt.plot(sentiment_x, avg_engagement_y)
         plt.xlabel('Compound Sentiment')
         plt.ylabel('Average Engagement')
-        plt.savefig(filename("avg_engagement_vs_sentiment.png"))
+        plt.savefig(filename("avg_engagement_by_sentiment_users.png"))
         plt.clf()
 
-        # sentiment by origin
+    def tweets_by_origin(self, tweets: List[Tweet]) -> Tuple[List[str], List[List[Tweet]]]:
+        origin_order = [origin.value for origin in TweetOrigin]
+        return origin_order, [list(filter(lambda tweet: tweet._origin == origin, tweets)) for origin in origin_order]
+
+    def tweets_by_sentiment(self, tweets: List[Tweet]) -> Tuple[List[float], List[List[Tweet]]]:
+        sentiment_order = [x/10 for x in range(-10, 11)]
+        return sentiment_order, [list(filter(lambda tweet: x-0.05 <= tweet.stats.compound_sentiment < x+0.05, tweets)) for x in sentiment_order]
+
+    def users_by_sentiment(self, users: Dict[str, User]) -> Tuple[List[float], List[List[User]]]:
+        sentiment_order = [x/10 for x in range(-10, 11)]
+        return sentiment_order, [list(filter(lambda user: x-0.05 <= user.compound_sentiment < x+0.05, users.values())) for x in sentiment_order]
+
+    def tweets_by_origin_graph(self, tweets: List[Tweet], filename: str) -> None:
         origins_x = [origin.value for origin in TweetOrigin]
-        tweets_by_origin = [list(filter(lambda tweet: tweet._origin == origin, all_tweets)) for origin in origins_x]
-        sentiment_y = [sum(tweet.stats.compound_sentiment for tweet in tweets) / max(len(tweets), 1) for tweets in tweets_by_origin]
+        origins_y = [len(list(filter(lambda tweet: tweet._origin == origin, tweets))) for origin in origins_x]
+
+        plt.bar(origins_x, origins_y)
+        plt.xlabel('Origin')
+        plt.ylabel('Number of Tweets')
+        plt.savefig(filename)
+        plt.clf()
+
+    def tweets_by_sentiment_graph(self, tweets: List[Tweet], filename: str) -> None:
+        sentiment_x = [x/10 for x in range(-10, 11)]
+        sentiment_y = [len(list(filter(lambda tweet: x-0.05 <= tweet.stats.compound_sentiment < x+0.05, tweets))) for x in sentiment_x]
+
+        plt.plot(sentiment_x, sentiment_y)
+        plt.xlabel('Compound Sentiment')
+        plt.ylabel('Number of Tweets')
+        plt.savefig(filename)
+        plt.clf()
+
+    def sentiment_by_origin_graph(self, tweets: List[Tweet], filename: str) -> None:
+        origins_x, tweets_by_origin = self.tweets_by_origin(tweets)
+        sentiment_y = [sum(tweet.stats.compound_sentiment for tweet in origin_tweets) / max(len(origin_tweets), 1) for origin_tweets in tweets_by_origin]
+
         plt.bar(origins_x, sentiment_y)
         plt.xlabel('Origin')
         plt.ylabel('Compound Sentiment')
-        plt.savefig(filename("sentiment_by_origin.png"))
+        plt.savefig(filename)
+        plt.clf()
+
+    def engagement_by_sentiment_graph(self, tweets: List[Tweet], total_filename: str, avg_filename: str) -> None:
+        sentiment_x, tweets_by_sentiment = self.tweets_by_sentiment(tweets)
+        total_engagement_y = [sum(tweet.stats.engagement_score for tweet in sentiment_tweets) for sentiment_tweets in tweets_by_sentiment]
+        avg_engagement_y   = [sum(tweet.stats.engagement_score for tweet in sentiment_tweets) / max(len(sentiment_tweets), 1) for sentiment_tweets in tweets_by_sentiment]
+
+        # based on sentiment, how high is engagement score
+        plt.plot(sentiment_x, total_engagement_y)
+        plt.xlabel('Compound Sentiment')
+        plt.ylabel('Combined Engagement')
+        plt.savefig(total_filename)
+        plt.clf()
+
+        # based on sentiment, how high is the average engagement score
+        plt.plot(sentiment_x, avg_engagement_y)
+        plt.xlabel('Compound Sentiment')
+        plt.ylabel('Average Engagement')
+        plt.savefig(avg_filename)
         plt.clf()
 
     def store_tweets_for_url(self, url: str, filename: str, limit: int = 1000, recusion_depth = 0) -> Tuple[List[Tweet], List[Tweet]]:
@@ -502,7 +537,7 @@ class TwitterAnalyzer:
 
     def get_tweets_for_url(self, url: str, limit: int = 1000, recusion_depth = 0) -> Tuple[List[Tweet], List[Tweet]]:
         print("Searching tweets with URL...", end=" ")
-        parent_tweets = self.search(url, limit=limit)
+        parent_tweets = self.search(f"url:{url}", limit=limit)
         print("Done.\n")
 
         print("Finding related tweets...")
