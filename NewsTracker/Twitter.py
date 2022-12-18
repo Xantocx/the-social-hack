@@ -9,6 +9,7 @@ import sys
 import shutil
 import os
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 
 from typing import List, Tuple, Dict
 from enum import Enum
@@ -16,6 +17,7 @@ from json import JSONEncoder
 from datetime import datetime, timedelta
 from io import StringIO
 from math import ceil
+from statistics import mean
 
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from pandas import DataFrame, concat
@@ -443,6 +445,8 @@ class TwitterAnalyzer:
 
         # user graphs
         self.engagement_by_sentiment_users_graph(users, filename("total_engagement_by_sentiment_users.png"), filename("avg_engagement_by_sentiment_users.png"))
+        self.user_scatter_log_graph(users, filename("followers_scatter_log.png"))
+        self.user_scatter_filtered_graph(users, filename("followers_scatter_filtered.png"))
 
     def average_engagement(self, tweets: List[Tweet]) -> None:
         num_tweets = len(list(filter(lambda tweet: tweet.origin != TweetOrigin.RETWEET, tweets)))
@@ -556,6 +560,55 @@ class TwitterAnalyzer:
         plt.xlabel('Compound Sentiment')
         plt.ylabel('Average Engagement')
         plt.savefig(avg_filename)
+        plt.clf()
+
+    def user_scatter_log_graph(self, users: Dict[str, User], filename: str) -> None:
+        user_list = users.values()
+        engagmenent_y = [user.engagement_score for user in user_list]
+
+        tweet_counts = [user.tweet_count for user in user_list]
+        followers = [user.followers for user in user_list]
+
+        max_tweets = max(tweet_counts)
+        area_tweets = [max(1000 * tweet_count / max_tweets, 5) for tweet_count in tweet_counts]
+
+        sentiment_colors = [(1.0 - (user.compound_sentiment + 1) / 2, (user.compound_sentiment + 1) / 2, 0.0) for user in user_list]
+        
+        # followers by engagement (log)
+        plt.scatter(followers, engagmenent_y, s=area_tweets, c=sentiment_colors, alpha=0.5)
+        plt.xscale("log")
+        plt.yscale("log")
+        plt.title("Scatter Plot (size = Tweet Count, color = Sentiment)")
+        plt.xlabel('Follower Count (log)')
+        plt.ylabel('Enagement Score (log)')
+        plt.savefig(filename)
+        plt.clf()
+
+    def user_scatter_filtered_graph(self, users: Dict[str, User], filename: str) -> None:
+        user_list = users.values()
+        engagement_limit = sorted(user.engagement_score for user in user_list)[int(0.98 * len(user_list))]
+        tweets_limit = sorted(user.tweet_count for user in user_list)[int(1 * len(user_list) - 1)]
+        followers_limit = sorted(user.followers for user in user_list)[int(0.95 * len(user_list))]
+
+        user_list = list(filter(lambda user: user.engagement_score <= engagement_limit and
+                                             user.tweet_count      <= tweets_limit and
+                                             user.followers        <= followers_limit, users.values()))
+        engagmenent_y = [user.engagement_score for user in user_list]
+
+        tweet_counts = [user.tweet_count for user in user_list]
+        followers = [user.followers for user in user_list]
+
+        max_tweets = max(tweet_counts)
+        area_tweets = [max(200 * tweet_count / max_tweets, 5) for tweet_count in tweet_counts]
+
+        sentiment_colors = [(1.0 - (user.compound_sentiment + 1) / 2, (user.compound_sentiment + 1) / 2, 0.0) for user in user_list]
+
+        # followers by engagement
+        plt.scatter(followers, engagmenent_y, s=area_tweets, c=sentiment_colors, alpha=0.5)
+        plt.title("Scatter Plot (size = Tweet Count, color = Sentiment)")
+        plt.xlabel('Follower Count')
+        plt.ylabel('Enagement Score')
+        plt.savefig(filename)
         plt.clf()
 
     def store_tweets_for_url(self, url: str, filename: str, limit: int = 1000, recusion_depth = 0) -> Tuple[List[Tweet], List[Tweet]]:
