@@ -171,22 +171,22 @@ class TwitterAnalyzer:
                 )
 
             @classmethod
-            def parse_twint(cls, tweet: DataFrame):
+            def parse_twint(cls, tweet: DataFrame, origin):
                 stats = TwitterAnalyzer.Tweet.Stats(
                     like_count    = tweet["nlikes"],
                     reply_count   = tweet["nreplies"],
-                    retweet_count = tweet["nretweets"]
+                    retweet_count = tweet["nretweets"] if origin != TweetOrigin.RETWEET else 0
                 )
                 stats.sentiment_analysis(tweet["tweet"])
                 return stats
 
             @classmethod
-            def parse_tweepy(cls, status):
+            def parse_tweepy(cls, status, origin):
                 # find way to read reply count with twint instead
                 stats = TwitterAnalyzer.Tweet.Stats(
                     like_count          = status.favorite_count,
                     reply_count         = 0,
-                    retweet_count       = status.retweet_count,
+                    retweet_count       = status.retweet_count if origin != TweetOrigin.RETWEET else 0,
                     request_reply_count = True
                 )
                 stats.sentiment_analysis(status.text)
@@ -448,26 +448,11 @@ class TwitterAnalyzer:
         self.tweets_by_origin_graph(all_tweets, filename("tweets_by_origin.png"))
         self.tweets_by_sentiment_graph(all_tweets, filename("tweets_by_sentiment.png"))
         self.sentiment_by_origin_graph(all_tweets, filename("sentiment_by_origin.png"))
-        self.engagement_by_sentiment_graph(all_tweets, filename("total_engagement_by_sentiment_tweets.png"), filename("avg_engagement_by_sentiment_tweets.png"))
+        self.engagement_by_origin_graph(all_tweets, filename("total_engagement_by_origin.png"), filename("avg_engagement_by_origin.png"))
+        self.engagement_by_sentiment_tweets_graph(all_tweets, filename("total_engagement_by_sentiment_tweets.png"), filename("avg_engagement_by_sentiment_tweets.png"))
 
         # user graphs
-        sentiment_x, users_by_sentiment = self.users_by_sentiment(users)
-        total_engagement_y = [sum(user.engagement_score for user in sentiment_users) for sentiment_users in users_by_sentiment]
-        avg_engagement_y   = [sum(user.engagement_score for user in sentiment_users) / max(len(sentiment_users), 1) for sentiment_users in users_by_sentiment]
-
-        # based on sentiment, how high is engagement score
-        plt.plot(sentiment_x, total_engagement_y)
-        plt.xlabel('Compound Sentiment')
-        plt.ylabel('Combined Engagement')
-        plt.savefig(filename("total_engagement_by_sentiment_users.png"))
-        plt.clf()
-
-        # based on sentiment, how high is the average engagement score
-        plt.plot(sentiment_x, avg_engagement_y)
-        plt.xlabel('Compound Sentiment')
-        plt.ylabel('Average Engagement')
-        plt.savefig(filename("avg_engagement_by_sentiment_users.png"))
-        plt.clf()
+        self.engagement_by_sentiment_users_graph(users, filename("total_engagement_by_sentiment_users.png"), filename("avg_engagement_by_sentiment_users.png"))
 
     def tweets_by_origin(self, tweets: List[Tweet]) -> Tuple[List[str], List[List[Tweet]]]:
         origin_order = [origin.value for origin in TweetOrigin]
@@ -486,6 +471,7 @@ class TwitterAnalyzer:
         origins_y = [len(list(filter(lambda tweet: tweet._origin == origin, tweets))) for origin in origins_x]
 
         plt.bar(origins_x, origins_y)
+        plt.title("Tweets by Origin")
         plt.xlabel('Origin')
         plt.ylabel('Number of Tweets')
         plt.savefig(filename)
@@ -496,6 +482,7 @@ class TwitterAnalyzer:
         sentiment_y = [len(list(filter(lambda tweet: x-0.05 <= tweet.stats.compound_sentiment < x+0.05, tweets))) for x in sentiment_x]
 
         plt.plot(sentiment_x, sentiment_y)
+        plt.title("Tweets by Sentiment")
         plt.xlabel('Compound Sentiment')
         plt.ylabel('Number of Tweets')
         plt.savefig(filename)
@@ -506,18 +493,41 @@ class TwitterAnalyzer:
         sentiment_y = [sum(tweet.stats.compound_sentiment for tweet in origin_tweets) / max(len(origin_tweets), 1) for origin_tweets in tweets_by_origin]
 
         plt.bar(origins_x, sentiment_y)
+        plt.title("Sentiment by Origin")
         plt.xlabel('Origin')
         plt.ylabel('Compound Sentiment')
         plt.savefig(filename)
         plt.clf()
 
-    def engagement_by_sentiment_graph(self, tweets: List[Tweet], total_filename: str, avg_filename: str) -> None:
+    def engagement_by_origin_graph(self, tweets: List[Tweet], total_filename: str, avg_filename: str) -> None:
+        origin_x, tweets_by_origin = self.tweets_by_origin(tweets)
+        total_engagement_y = [sum(tweet.stats.engagement_score for tweet in origin_tweets) for origin_tweets in tweets_by_origin]
+        avg_engagement_y   = [sum(tweet.stats.engagement_score for tweet in origin_tweets) / max(len(origin_tweets), 1) for origin_tweets in tweets_by_origin]
+
+        # based on sentiment, how high is engagement score
+        plt.bar(origin_x, total_engagement_y)
+        plt.title("Total Engagement by Origin")
+        plt.xlabel('Origin')
+        plt.ylabel('Total Engagement')
+        plt.savefig(total_filename)
+        plt.clf()
+
+        # based on sentiment, how high is the average engagement score
+        plt.bar(origin_x, avg_engagement_y)
+        plt.title("Average Engagement by Origin")
+        plt.xlabel('Origin')
+        plt.ylabel('Average Engagement')
+        plt.savefig(avg_filename)
+        plt.clf()
+
+    def engagement_by_sentiment_tweets_graph(self, tweets: List[Tweet], total_filename: str, avg_filename: str) -> None:
         sentiment_x, tweets_by_sentiment = self.tweets_by_sentiment(tweets)
         total_engagement_y = [sum(tweet.stats.engagement_score for tweet in sentiment_tweets) for sentiment_tweets in tweets_by_sentiment]
         avg_engagement_y   = [sum(tweet.stats.engagement_score for tweet in sentiment_tweets) / max(len(sentiment_tweets), 1) for sentiment_tweets in tweets_by_sentiment]
 
         # based on sentiment, how high is engagement score
         plt.plot(sentiment_x, total_engagement_y)
+        plt.title("Total Tweet Engagement by Sentiment")
         plt.xlabel('Compound Sentiment')
         plt.ylabel('Combined Engagement')
         plt.savefig(total_filename)
@@ -525,6 +535,28 @@ class TwitterAnalyzer:
 
         # based on sentiment, how high is the average engagement score
         plt.plot(sentiment_x, avg_engagement_y)
+        plt.title("Average Tweet Engagement by Sentiment")
+        plt.xlabel('Compound Sentiment')
+        plt.ylabel('Average Engagement')
+        plt.savefig(avg_filename)
+        plt.clf()
+
+    def engagement_by_sentiment_users_graph(self, users: Dict[str, User], total_filename: str, avg_filename: str) -> None:
+        sentiment_x, users_by_sentiment = self.users_by_sentiment(users)
+        total_engagement_y = [sum(user.engagement_score for user in sentiment_users) for sentiment_users in users_by_sentiment]
+        avg_engagement_y   = [sum(user.engagement_score for user in sentiment_users) / max(len(sentiment_users), 1) for sentiment_users in users_by_sentiment]
+
+        # based on sentiment, how high is engagement score
+        plt.plot(sentiment_x, total_engagement_y)
+        plt.title("Total User Engagement by Sentiment")
+        plt.xlabel('Compound Sentiment')
+        plt.ylabel('Combined Engagement')
+        plt.savefig(total_filename)
+        plt.clf()
+
+        # based on sentiment, how high is the average engagement score
+        plt.plot(sentiment_x, avg_engagement_y)
+        plt.title("Average User Engagement by Sentiment")
         plt.xlabel('Compound Sentiment')
         plt.ylabel('Average Engagement')
         plt.savefig(avg_filename)
