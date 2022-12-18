@@ -410,32 +410,40 @@ class TwitterAnalyzer:
         self.google = GoogleSearch(self.config, "twitter.com")
 
     def analyze_url(self, url: str, foldername: str) -> None:
-        os.makedirs(os.path.dirname(foldername), exist_ok=True)
-        parent_tweets, all_tweets = self.store_tweets_for_url(url, os.path.join(foldername, "tweets.json"))
-        self.analyze(parent_tweets, all_tweets, foldername)
+        folder = foldername if foldername[-1] == "/" else foldername + "/"
+        os.makedirs(folder, exist_ok=True)
+        parent_tweets, all_tweets = self.store_tweets_for_url(url, os.path.join(folder, "tweets.json"))
+        if parent_tweets is not None:
+            self.analyze(parent_tweets, all_tweets, folder)
 
     def analyze_tweets_file(self, tweets_file: str, foldername: str) -> None:
 
         parent_tweets, all_tweets = self.load_tweets_from_file(tweets_file)
 
         # make sure tweets json file is in target folder as well
+        folder = foldername if foldername[-1] == "/" else foldername + "/"
         source_file = os.path.abspath(tweets_file)
-        target_file = os.path.abspath(os.path.join(foldername, "tweets.json"))
+        target_file = os.path.abspath(os.path.join(folder, "tweets.json"))
         if source_file != target_file:
-            os.makedirs(os.path.dirname(foldername), exist_ok=True)
+            os.makedirs(folder, exist_ok=True)
             shutil.copy(source_file, target_file)
 
-        self.analyze(parent_tweets, all_tweets, foldername)
+        self.analyze(parent_tweets, all_tweets, folder)
         
     def analyze(self, parent_tweets: List[Tweet], all_tweets: List[Tweet], foldername: str) -> None:
 
         def filename(filename: str) -> str: return os.path.join(foldername, filename)
 
+        print("\nStart analysis...\n")
+
+        print("Extracting users...")
         users = self.get_users_from_tweets(all_tweets)
 
+        print("Generating CSVs...")
         self.tweets_to_csv(all_tweets, filename("tweets.csv"))
         self.users_to_csv(users, filename("users.csv"))
         
+        print("Generating graphs...")
         # tweet graphs
         self.tweets_by_origin_graph(all_tweets, filename("tweets_by_origin.png"))
         self.tweets_by_sentiment_graph(all_tweets, filename("tweets_by_sentiment.png"))
@@ -447,6 +455,8 @@ class TwitterAnalyzer:
         self.engagement_by_sentiment_users_graph(users, filename("total_engagement_by_sentiment_users.png"), filename("avg_engagement_by_sentiment_users.png"))
         self.user_scatter_log_graph(users, filename("followers_scatter_log.png"))
         self.user_scatter_filtered_graph(users, filename("followers_scatter_filtered.png"))
+
+        print("\nDone with analysis.")
 
     def average_engagement(self, tweets: List[Tweet]) -> None:
         num_tweets = len(list(filter(lambda tweet: tweet.origin != TweetOrigin.RETWEET, tweets)))
@@ -620,9 +630,13 @@ class TwitterAnalyzer:
         return self.get_tweets(f"url:{url}", limit, recusion_depth)
 
     def get_tweets(self, search_term: str, limit: int = 1000, recusion_depth = 0) -> Tuple[List[Tweet], List[Tweet]]:
-        print(f"Searching tweets with using search term '{search_term}'...", end=" ")
+        print(f"Searching tweets using search term '{search_term}'...", end=" ")
         parent_tweets = self.search(search_term, limit=limit, repetitions=10)
         print("Done.\n")
+
+        if len(parent_tweets) == 0:
+            print("Could not find any tweets.\n")
+            return None, None
 
         print("Finding related tweets...")
 
@@ -764,6 +778,7 @@ class TwitterAnalyzer:
         return parent_tweets + self.expand_parent_tweets(children)
     
     def store_tweets(self, parent_tweets: List[Tweet], filename: str) -> None:
+        if parent_tweets is None: return
         with open(filename, "w") as file:
             json.dump(parent_tweets, file, cls=TweetEncoder)
 

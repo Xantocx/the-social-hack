@@ -131,7 +131,10 @@ dmypy.json
 # CUSTOM
 submissions.csv
 tmp.json
+temporary_resume_log.txt
 sude_tweet
 testing
 twitter-testing
 twitter_testing
+testing-data
+results
