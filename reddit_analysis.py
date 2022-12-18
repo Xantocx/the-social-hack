@@ -7,7 +7,8 @@ config = Configuration.load_from(".env")
 reddit_search = GoogleSearch(config, "reddit.com")
 reddit_analyzer = RedditAnalyzer(config)
 
-# error whenever >10 search results are requested
+# Input the topic here below and the number of occurrences 
+# WARNING error whenever >10 search results are requested
 results = reddit_search.search("ukraine war", num=10)
 
 group_subs = []
@@ -23,8 +24,9 @@ for sub in group_subs:
         submissions.remove(s)
     pass
 
+# CSV with the data from the submissions
+reddit_analyzer.write_to_csv_stats(submissions)
 
-#reddit_analyzer.write_to_csv_stats(subs)
-
+# Plot with the data from the sentiment analysis, turn "to_CSV" to True if CSV for that wanted
 pol_results = reddit_analyzer.get_polarity_results(submissions)
 reddit_analyzer.df_from_records(pol_results, to_csv=False, plot=True)
