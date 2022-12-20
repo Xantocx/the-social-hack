@@ -8,8 +8,10 @@ import json
 import sys
 import shutil
 import os
+import re
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import preprocessor as p
 
 from typing import List, Tuple, Dict
 from enum import Enum
@@ -43,8 +45,11 @@ class TwintCapturing(list):
         sys.stdout = self._stdout
 
     @classmethod
-    def fast_search(cls, config: twint.Config) -> DataFrame:
+    def fast_search(cls, config: twint.Config, language: str = 'en') -> DataFrame:
+
+        if config.Search and language: config.Search += f" lang:{language}"
         config.Pandas = True
+
         with cls() as _:
             try:
                 twint.run.Search(config)
@@ -53,9 +58,10 @@ class TwintCapturing(list):
         return twint.output.panda.Tweets_df
 
     @classmethod
-    def search(cls, config: twint.Config, repetitions: int = 1) -> DataFrame:
+    def search(cls, config: twint.Config, language: str = 'en', repetitions: int = 1) -> DataFrame:
         if repetitions < 2: return cls.fast_search(config)
 
+        if config.Search and language: config.Search += f" lang:{language}"
         config.Pandas = True
         config.Resume = cls.RESUME_LOG_FILE
 
@@ -94,7 +100,8 @@ class TwitterAnalyzer:
                             "Negative Sentiment Score",
                             "Neutral Sentiment Score",
                             "Positive Sentiment Score",
-                            "Compound Sentiment Score"]
+                            "Compound Sentiment Score",
+                            "Hashtags"]
 
 
         class TweetEncoder(JSONEncoder):
@@ -162,6 +169,29 @@ class TwitterAnalyzer:
             return f"@{self.username}"
 
         @property
+        def hashtags(self) -> List[str]:
+            return re.findall('(#[A-Za-z]+[A-Za-z0-9-_]+)', self.text)
+        
+        @property
+        def clean_text(self) -> str:
+
+            p.set_options(p.OPT.MENTION ,p.OPT.URL)
+
+            clean_tweet = self.text.replace("#", "") # remove hashtag symbol
+            clean_tweet = p.clean(clean_tweet)
+
+            # Remove retweets:
+            clean_tweet = re.sub(r'RT : ', '', clean_tweet)
+            #remove amp
+            clean_tweet = re.sub(r'&amp;', '', clean_tweet)
+            #rempve strange characters
+            clean_tweet = re.sub(r'ðŸ™', '', clean_tweet)
+            #remove new lines
+            clean_tweet = re.sub(r'\n', ' ', clean_tweet)
+
+            return clean_tweet
+
+        @property
         def origin(self) -> Origin:
             return TweetOrigin(self._origin)
 
@@ -201,7 +231,8 @@ class TwitterAnalyzer:
                 self.negative_sentiment,
                 self.neutral_sentiment,
                 self.positive_sentiment,
-                self.compound_sentiment
+                self.compound_sentiment,
+                " ".join(self.hashtags)
             ]
 
         def add_replies(self, tweets: List) -> None:
@@ -218,7 +249,7 @@ class TwitterAnalyzer:
                 self.quote_count = len(self.quotes)
 
         def update_sentiment(self) -> None:
-            polarity = Tweet.SIA.polarity_scores(self.text)
+            polarity = Tweet.SIA.polarity_scores(self.clean_text)
             if self.negative_sentiment is None: self.negative_sentiment = polarity["neg"]
             if self.neutral_sentiment  is None: self.neutral_sentiment  = polarity["neu"]
             if self.positive_sentiment is None: self.positive_sentiment = polarity["pos"]
@@ -411,7 +442,11 @@ class TwitterAnalyzer:
 
     def analyze_url(self, url: str, foldername: str) -> None:
         folder = foldername if foldername[-1] == "/" else foldername + "/"
+
         os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "url.txt"), "w") as file:
+            file.write(url)
+
         parent_tweets, all_tweets = self.store_tweets_for_url(url, os.path.join(folder, "tweets.json"))
         if parent_tweets is not None:
             self.analyze(parent_tweets, all_tweets, folder)
@@ -438,6 +473,11 @@ class TwitterAnalyzer:
 
         print("Extracting users...")
         users = self.get_users_from_tweets(all_tweets)
+
+        print("Write metadata...")
+        with open(filename("metadata.txt"), "w") as file:
+            file.writelines([f"Tweet Count: {len(all_tweets)}\n",
+                             f"User Count:  {len(users)}\n"])
 
         print("Generating CSVs...")
         self.tweets_to_csv(all_tweets, filename("tweets.csv"))
@@ -582,7 +622,7 @@ class TwitterAnalyzer:
         max_tweets = max(tweet_counts)
         area_tweets = [max(1000 * tweet_count / max_tweets, 5) for tweet_count in tweet_counts]
 
-        sentiment_colors = [(1.0 - (user.compound_sentiment + 1) / 2, (user.compound_sentiment + 1) / 2, 0.0) for user in user_list]
+        sentiment_colors = [(max(1.0 - (user.compound_sentiment + 1), 0), max(user.compound_sentiment, 0), 0.0) for user in user_list]
         
         # followers by engagement (log)
         plt.scatter(followers, engagmenent_y, s=area_tweets, c=sentiment_colors, alpha=0.5)
@@ -611,7 +651,7 @@ class TwitterAnalyzer:
         max_tweets = max(tweet_counts)
         area_tweets = [max(200 * tweet_count / max_tweets, 5) for tweet_count in tweet_counts]
 
-        sentiment_colors = [(1.0 - (user.compound_sentiment + 1) / 2, (user.compound_sentiment + 1) / 2, 0.0) for user in user_list]
+        sentiment_colors = [(max(1.0 - (user.compound_sentiment + 1), 0), max(user.compound_sentiment, 0), 0.0) for user in user_list]
 
         # followers by engagement
         plt.scatter(followers, engagmenent_y, s=area_tweets, c=sentiment_colors, alpha=0.5)
@@ -695,7 +735,7 @@ class TwitterAnalyzer:
         c.Limit = limit
         if since: c.Since = since
 
-        results = TwintCapturing.search(c, repetitions)
+        results = TwintCapturing.search(c, repetitions=repetitions)
         return Tweet.parse_twint(results, origin)
 
     def get_replies(self, tweet: Tweet, limit: int = 1000) -> List[Tweet]:

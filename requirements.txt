@@ -11,3 +11,5 @@ numpy
 seaborn
 tqdm
 matplotlib
+tweet-preprocessor
+ekphrasis
