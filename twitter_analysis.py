@@ -7,8 +7,14 @@ twitter = TwitterAnalyzer(config)
 printer = DelayedPrinter()
 
 result_dir = "./final-results/"
-def folder(foldername: str) -> str: 
+merged_dir = "./merged-results/"
+
+def result_folder(foldername: str) -> str: 
     dir = os.path.join(result_dir, foldername)
+    return dir if dir[-1] == "/" else dir + "/"
+
+def merged_folder(foldername: str) -> str: 
+    dir = os.path.join(merged_dir, foldername)
     return dir if dir[-1] == "/" else dir + "/"
 
 topics = {
@@ -51,27 +57,53 @@ topics = {
     }
 }
 
-for topic, articles in topics.items():
+def analyze_topics():
+    for topic, articles in topics.items():
 
-    printer.delay(100 * "-")
-    printer.delay(f"\nStart processing topic {topic}...")
+        printer.delay(100 * "-")
+        printer.delay(f"\nStart processing topic {topic}...")
 
-    for index, (source, url) in enumerate(articles.items()):
+        for index, (source, url) in enumerate(articles.items()):
 
-        printer.delay(f"\nProcessing article {index + 1}/{len(articles)} now...\n")
+            printer.delay(f"\nProcessing article {index + 1}/{len(articles)} now...\n")
 
-        dir = folder(f"{topic}/{source}")
-        if not os.path.exists(dir):
-            printer.print()
-            twitter.analyze_url(url, dir)
+            dir = result_folder(f"{topic}/{source}")
+            if not os.path.exists(dir):
+                printer.print()
+                twitter.analyze_url(url, dir)
+            else:
+                printer.pop()
+
+        if printer.is_empty:
+            print(f"\nFinished processing topic {topic}.\n")
+            print(100 * "-")
+            # exit()
         else:
-            printer.pop()
+            printer.clear()
 
-    if printer.is_empty:
-        print(f"\nFinished processing topic {topic}.\n")
-        print(100 * "-")
-    else:
-        printer.clear()
+def merge_topics():
+    for topic, articles in topics.items():
+
+        parents = []
+        tweets = []
+
+        for source, url in articles.items():
+            tweets_file = os.path.join(result_folder(f"{topic}/{source}"), "tweets.json")
+            if os.path.exists(tweets_file):
+                parent_tweets, all_tweets = twitter.load_tweets_from_file(tweets_file)
+                parents += parent_tweets
+                tweets += all_tweets
+
+        merged_folder_dir = merged_folder(f"{topic}")
+        os.makedirs(merged_folder_dir, exist_ok=True)
+        
+        twitter.store_tweets(parents, os.path.join(merged_folder_dir, "tweets.json"))
+        twitter.analyze(parents, tweets, merged_folder_dir)
+
+        
+# analyze_topics()
+merge_topics()
+
 
 # parents, all = twitter.store_tweets_for_url("https://www.nytimes.com/2022/12/15/business/china-zero-covid-apology.html", "./demo_set.json", 1000, 1)
 # twitter.tweets_to_csv(all, "./demo_set.csv")

@@ -10,7 +10,6 @@ import shutil
 import os
 import re
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import preprocessor as p
 
 from typing import List, Tuple, Dict
@@ -45,7 +44,7 @@ class TwintCapturing(list):
         sys.stdout = self._stdout
 
     @classmethod
-    def fast_search(cls, config: twint.Config, language: str = 'en') -> DataFrame:
+    def fast_search(cls, config: twint.Config, language: str = "en") -> DataFrame:
 
         if config.Search and language: config.Search += f" lang:{language}"
         config.Pandas = True
@@ -58,7 +57,7 @@ class TwintCapturing(list):
         return twint.output.panda.Tweets_df
 
     @classmethod
-    def search(cls, config: twint.Config, language: str = 'en', repetitions: int = 1) -> DataFrame:
+    def search(cls, config: twint.Config, language: str = "en", repetitions: int = 1) -> DataFrame:
         if repetitions < 2: return cls.fast_search(config)
 
         if config.Search and language: config.Search += f" lang:{language}"
@@ -712,8 +711,15 @@ class TwitterAnalyzer:
 
         users = {user.screen_name: TwitterUser(user.screen_name, user.followers_count) for user in user_info}
 
+        deleted_users = 0
         for tweet in tweets:
-            users[tweet.username].add_tweet(tweet)
+            user = tweet.username
+            if user in users:
+                users[user].add_tweet(tweet)
+            else:
+                deleted_users += 1
+
+        if deleted_users > 0: print(f"\n{deleted_users} user(s) deleted.\n")
 
         return users
 
