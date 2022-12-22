@@ -23,19 +23,8 @@ from statistics import mean
 from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
 from pandas import DataFrame, concat
 from tqdm import tqdm
-
-# Previous imports
-# import csv
-# from os.path import join
-# from IPython import display
 from pprint import pprint
-# import pandas as pd
-# import numpy as np
-# import seaborn as sns
-# sns.set(style='darkgrid', context='talk', palette='Dark2')
 
-
-##### WorkInProgress ######
 
 class RedditAnalyzer:
 
@@ -88,6 +77,7 @@ class RedditAnalyzer:
             self.subreddit_id = subreddit_id
             self.username = username
             self.date = (datetime.fromtimestamp(date)).strftime('%Y-%m-%d %H:%M:%S')
+            # when extracting the data, it needs date.timestamp()
             #self.date = date.timestamp()
             self.text = text
             self.url = url
@@ -149,7 +139,7 @@ class RedditAnalyzer:
                 self.positive_sentiment,
                 self.compound_sentiment
             ]
-        # TODO Reprogram to match a CommentForest
+
         def add_comments(self, comments: List) -> None:
             self.comments += comments
 
@@ -570,6 +560,8 @@ class RedditAnalyzer:
 
         ignore_ids += [submission.id for submission in parent_submissions]
 
+# TODO get MORE SUBMISSIONS from either Google or API.SEARCH
+# OPTION 1:
         google_submissions = []
         url_analyser = URLAnalyzer(search_term)
         title = url_analyser.title
@@ -581,6 +573,7 @@ class RedditAnalyzer:
         # google_submissions = [sub for subs in google_submissions for sub in subs]
         # google_submissions = filter_submissions(google_submissions)
         # parent_submissions += google_submissions
+#OPTION 2:
         print(f"Searching submissions using search term '{search_term}'...", end=" ")
         parent_submissions += self.search(search_term, limit=10)
         # # print("Done.\n")
@@ -589,17 +582,13 @@ class RedditAnalyzer:
         #     print("Could not find any submissions.\n")
         #     return None, None
 
-# TODO get comments
+# TODO get comments NOT NEEDED for analysis
         # print("Finding related comments...")
-
         related_comments = []
         # progress = tqdm(parent_submissions)
         # progress.set_description("Overall Progress")
-
         # for submission in progress:
         #     related_comments += self.get_related_comments(submission, limit, recusion_depth)
-        
-
         # print(f"Done.\n\nFound {len(related_submissions)} related comments.")
 
         return parent_submissions, related_comments
@@ -640,37 +629,35 @@ class RedditAnalyzer:
                     pass
         return users
 
-# TODO redo for Reddit (SEARCH KEYWORDS + URLS)
     def search(self, search_term: str, 
                      limit: int = 10
                      ) -> List[Submission]:
 
         results = self.search_submissions_keywords(search_term, limit)
         subs = []
-        try:
+        try: # try / except for catching an error that I can't reckognize
             subs = Submission.parse_praw(results, SubmissionOrigin)
         except Redirect:
             print("Redirected")
 
         return subs
 
-# TODO implement comments
+# TODO  get_comments NOT NEEDED
     # def get_comments(self, submission: Submission, limit: int = 1000) -> List[Comment]:
     #     comments = []
     #     return comments
 
-# TODO get the related comments
+# TODO get_related_comments NOT NEEDED
     def get_related_comments(self, submission: Submission, limit: int = 1000, recursion_depth: int = 0, ignore_ids: List[str] = []) -> List[Submission]:
 
         def filter_submissions(submissions: List[Submission]):
             return [submission for submission in submissions if submission.submission_id not in ignore_ids]
-# TODO this is where to add the comments
-        return [] #delete when used
+
+        return [] 
         comments  = filter_submissions(self.get_comments())      
 
         submission.add_comments(comments)
 
-        #submissions = replies + resubmissions + quotes
         ignore_ids += [submission.submission_id for submission in submissions]
 
         results = []
@@ -711,10 +698,8 @@ class RedditAnalyzer:
         df = self.users_to_dataframe(users)
         df.to_csv(filename)
 
-# OLD METHODS
-
     # get different submissions from a given URL on reddit (https://www.theguardian.co.uk...)
-    def get_submissions_from_non_reddit_url(self, url):
+    def get_submissions_from_non_reddit_url(self, url) -> List[Submission]:
         obj = self.api.info(url=url)
         subs = []
         for sub in obj:
@@ -722,38 +707,24 @@ class RedditAnalyzer:
         return subs
 
     # get submission from a reddit URL (https://www.reddit.com...)
-    def get_submissions_from_reddit_url(self, url):
+    def get_submissions_from_reddit_url(self, url) -> List[Submission]:
         reddit_obj = self.api.info(url=url)
         sub_list = []
         for obj in reddit_obj:
             if isinstance(obj, praw.models.Subreddit):
                 pass
             elif isinstance(reddit_obj, praw.models.Submission):
-                print(f'Submission: {obj} is class {obj.__class__}')
+                #print(f'Submission: {obj} is class {obj.__class__}')
                 sub_list.append(obj)
             elif isinstance(reddit_obj, praw.models.Comment):
-                print(f'Comment: {obj} is class {obj.__class__}')
+                #print(f'Comment: {obj} is class {obj.__class__}')
                 sub_list.append(obj.submission)
             sub_list.append(obj)
             #print(f'Object: {obj} is class {obj.__class__}')
         return sub_list
 
-
-    def stats(self, url):
-        sub = self.api.submission(url=url)
-        row = [sub.title, sub.score, sub.upvote_ratio, sub.comment_count, sub.is_original_content]
-        fields = ["Title", "Score", "Upvote_Ratio", "Num_comments", "Is_original_content?"]
-
-    def update_stats(self):
-        if len(self.submissions) > 0:
-            self.comment_count = 0
-            sum_upvote_ratio = 0
-            for sub in self.submissions:
-                self.comment_count += sub.comment_count
-                sum_upvote_ratio += sub.upvote_ratio
-            self.avg_upvote_ratio = sum_upvote_ratio/len(self.submissions)
-
-    def search_submissions_keywords(self, keywords, limit):
+    # get submission from keywords 
+    def search_submissions_keywords(self, keywords, limit) -> List[Submission]:
         submissions = self.api.subreddit("all").search(query=keywords, sort='relevance', syntax='cloudsearch', limit=limit)
         return submissions
 
