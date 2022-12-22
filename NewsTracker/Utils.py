@@ -1,3 +1,4 @@
+import urllib.parse
 from typing import Set
 
 class DelayedPrinter:
@@ -30,3 +31,21 @@ def read_stopwords() -> Set[str]:
     return set(words)
 
 custom_stopwords = read_stopwords()
+
+
+
+def read_file_and_create_list(filename):
+    with open(filename, "r") as f:
+        lines = f.readlines()
+    return [line.strip() for line in lines]
+
+def get_keywords_from_url(url):
+    parsed_url = urllib.parse.urlparse(url)
+    path = parsed_url.path
+    # Split the path into segments and filter out empty segments
+    path_segments = list(filter(bool, path.split("/")))
+    path_segments = [list(path.split("-")) for path in path_segments]
+    # Return the last segment of the path as the keyword
+    if path_segments:
+        return path_segments[-1]
+    return ""
