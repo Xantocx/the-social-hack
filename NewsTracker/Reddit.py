@@ -24,6 +24,7 @@ from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
 from pandas import DataFrame, concat
 from tqdm import tqdm
 from pprint import pprint
+import RAKE
 
 
 class RedditAnalyzer:
@@ -76,9 +77,9 @@ class RedditAnalyzer:
             self.submission_id = submission_id
             self.subreddit_id = subreddit_id
             self.username = username
-            self.date = (datetime.fromtimestamp(date)).strftime('%Y-%m-%d %H:%M:%S')
+            #self.date = (datetime.fromtimestamp(date)).strftime('%Y-%m-%d %H:%M:%S')
             # when extracting the data, it needs date.timestamp()
-            #self.date = date.timestamp()
+            self.date = date.timestamp()
             self.text = text
             self.url = url
             self._origin = origin.value
@@ -204,7 +205,7 @@ class RedditAnalyzer:
                 submission = Submission(
                     submission_id       = sub.id,
                     subreddit_id        = sub.subreddit.id,
-                    username            = sub.author.name if sub.author is not None else "?",
+                    username            = sub.author.name if sub.author is not None else None,
                     date                = sub.created_utc, 
                     text                = sub.title,
                     url                 = sub.url,
@@ -316,13 +317,13 @@ class RedditAnalyzer:
 
         self.google = GoogleSearch(self.config, "reddit.com")
 
-    def analyze_url(self, url: str, foldername: str) -> None:
+    def analyze_url(self, url: str, keywords: List[str], foldername: str) -> None:
         folder = foldername if foldername[-1] == "/" else foldername + "/"
 
         os.makedirs(folder, exist_ok=True)
         with open(os.path.join(folder, "url.txt"), "w") as file:
             file.write(url)
-        all_submissions, related_comments = self.store_submissions_for_url(url, os.path.join(folder, "submissions.json"))
+        all_submissions, related_comments = self.store_submissions_for_url(url, keywords, os.path.join(folder, "submissions.json"), limit=5)
         if all_submissions is not None:
             self.analyze(all_submissions, folder)
 
@@ -540,16 +541,16 @@ class RedditAnalyzer:
         plt.savefig(filename)
         plt.clf()
 
-    def store_submissions_for_url(self, url: str, filename: str, limit: int = 10, recusion_depth = 0) -> Tuple[List[Submission], List[Submission]]:
-        parent_submissions, related_comments = self.get_submissions_for_url(url, limit, recusion_depth)
+    def store_submissions_for_url(self, url: str, keywords: List[str], filename: str, limit: int = 10, recusion_depth = 0) -> Tuple[List[Submission], List[Submission]]:
+        parent_submissions, related_comments = self.get_submissions_for_url(url, keywords, limit, recusion_depth)
         parsed_submissions = Submission.parse_praw(parent_submissions, Submission.Origin.SEARCH)
         self.store_submissions(parsed_submissions, filename)
         return parsed_submissions, related_comments
 
-    def get_submissions_for_url(self, url: str, limit: int = 10, recusion_depth = 0) -> Tuple[List[Submission], List[Submission]]:
-        return self.get_submissions(url, limit, recusion_depth)
+    def get_submissions_for_url(self, url: str, keywords: List[str], limit: int = 10, recusion_depth = 0) -> Tuple[List[Submission], List[Submission]]:
+        return self.get_submissions(url,  keywords, limit, recusion_depth)
 
-    def get_submissions(self, search_term: str, limit: int = 2, recusion_depth = 0, ignore_ids: List[str] = []) -> Tuple[List[Submission], List[Submission]]:
+    def get_submissions(self, search_term: str,  keywords: List[str], limit: int = 10, recusion_depth = 0, ignore_ids: List[str] = []) -> Tuple[List[Submission], List[Submission]]:
 
         def filter_submissions(submissions: List[Submission]):
             return [submission for submission in submissions if submission.id not in ignore_ids]
@@ -562,25 +563,21 @@ class RedditAnalyzer:
 
 # TODO get MORE SUBMISSIONS from either Google or API.SEARCH
 # OPTION 1:
-        google_submissions = []
-        url_analyser = URLAnalyzer(search_term)
-        title = url_analyser.title
-        google_search = self.google.search(title, num=limit)
-        # TODO el google search no va...
         # for result in google_search:
         #     #print(f"{result.title}: {result.url}")
         #     google_submissions.append(self.get_submissions_from_reddit_url(url=result.url))
         # google_submissions = [sub for subs in google_submissions for sub in subs]
-        # google_submissions = filter_submissions(google_submissions)
-        # parent_submissions += google_submissions
 #OPTION 2:
         print(f"Searching submissions using search term '{search_term}'...", end=" ")
-        parent_submissions += self.search(search_term, limit=10)
-        # # print("Done.\n")
+        print(keywords)
+        search_submissions = self.search(search_term, keywords, limit)
+        search_submissions = filter_submissions(search_submissions)
+        parent_submissions += search_submissions
+        print("Done.\n")
 
-        # if len(parent_submissions) == 0:
-        #     print("Could not find any submissions.\n")
-        #     return None, None
+        if len(parent_submissions) == 0:
+            print("Could not find any submissions.\n")
+            return None, None
 
 # TODO get comments NOT NEEDED for analysis
         # print("Finding related comments...")
@@ -600,47 +597,47 @@ class RedditAnalyzer:
         users_r = []
 
         for username in usernames:
-            if username == "?":
-                pass
-            else:
+            if username is not None:
                 try:
-                    users_r.append(self.api.redditor(username))
-                except NotFound as e:
+                    user_reddit = self.api.redditor(username)
+                    id = user_reddit.id
+                    users_r.append(user_reddit)                    
+                except (NotFound, AttributeError) as e:
                     print("Error:", e)
-                # redditor = self.api.redditor(username)
-                # if hasattr(redditor, 'is_suspended') and redditor.is_suspended:
-                #     pass
-                # else:
-                    
-                #     users_r.append(redditor)
-        try:
-            users = {}
-            for user in users_r:
-                users[user.name] =  RedditUser(user.name, user.id)
-            
-        except NotFound as e:
-            print("Error:", e)
+                    users_r.append(None)
+            else:
+                users_r.append(None)
+        users = {}
+        for user in users_r:
+            if user is not None:
+                try:
+                    id = user.id
+                    users[user.name] =  RedditUser(user.name, id)
+                except AttributeError as e:
+                    print("Error:", e)
+                    users[users.name] = None
 
         for submission in submissions:
-            if submission.username != "?":
+            if submission.username is not None:
                 try:
                     users[submission.username].add_submission(submission)
                 except KeyError:
                     pass
         return users
 
-    def search(self, search_term: str, 
+    def search(self, search_term: str, keywords: List[str],
                      limit: int = 10
                      ) -> List[Submission]:
 
-        results = self.search_submissions_keywords(search_term, limit)
-        subs = []
-        try: # try / except for catching an error that I can't reckognize
-            subs = Submission.parse_praw(results, SubmissionOrigin)
-        except Redirect:
-            print("Redirected")
+        results = []
+        
+        for keyword in keywords:
+            # Get submissions from keywords (Reddit API)
+            results.append(self.search_submissions_keywords(keyword, limit))
+        # Obtain all submissions from keywords in a list
+        results_search = [result for sub_list in results for result in sub_list]
 
-        return subs
+        return results_search
 
 # TODO  get_comments NOT NEEDED
     # def get_comments(self, submission: Submission, limit: int = 1000) -> List[Comment]:
@@ -727,6 +724,8 @@ class RedditAnalyzer:
     def search_submissions_keywords(self, keywords, limit) -> List[Submission]:
         submissions = self.api.subreddit("all").search(query=keywords, sort='relevance', syntax='cloudsearch', limit=limit)
         return submissions
+    def get_stopwords(self) -> str:
+        return ["a", "and", "the", "in", "of", "to", "on", "at", "for", "with",    "by", "from", "as", "into", "like", "through", "after", "over",    "between", "out", "against", "during", "without", "before", "under",    "around", "among", "within", "along", "up", "down", "off", "above",    "below", "behind", "beyond"]
 
 # Global variables
 Submission = RedditAnalyzer.Submission
