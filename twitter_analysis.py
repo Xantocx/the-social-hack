@@ -2,21 +2,28 @@ from NewsTracker.Twitter import *
 from NewsTracker.Utils import DelayedPrinter
 import os
 
+# load config
 config = Configuration.load_from(".env")
+# create twitter analyzer object
 twitter = TwitterAnalyzer(config)
+# create custom printer object for more pretty printing in console
 printer = DelayedPrinter()
 
+# defined folder names for results
 result_dir = "./final-results/"
 merged_dir = "./merged-results/"
 
+# generate a foldername in result folder
 def result_folder(foldername: str) -> str: 
     dir = os.path.join(result_dir, foldername)
     return dir if dir[-1] == "/" else dir + "/"
 
+# generate a foldername in merged result folder
 def merged_folder(foldername: str) -> str: 
     dir = os.path.join(merged_dir, foldername)
     return dir if dir[-1] == "/" else dir + "/"
 
+# dictionary for all topics and their respective articles
 topics = {
     "elon-musk-twitter": {
         "bbc":                 "https://www.bbc.com/news/business-64010202",
@@ -57,16 +64,21 @@ topics = {
     }
 }
 
+# function to analyze the above articles
 def analyze_topics():
+
+    # iterate through all topics
     for topic, articles in topics.items():
 
         printer.delay(100 * "-")
         printer.delay(f"\nStart processing topic {topic}...")
 
+        # iterate through all articles
         for index, (source, url) in enumerate(articles.items()):
 
             printer.delay(f"\nProcessing article {index + 1}/{len(articles)} now...\n")
 
+            # analyze article and write result to respective folder
             dir = result_folder(f"{topic}/{source}")
             if not os.path.exists(dir):
                 printer.print()
@@ -82,11 +94,15 @@ def analyze_topics():
             printer.clear()
 
 def merge_topics():
+    
+    # iterate through all topics
     for topic, articles in topics.items():
 
         parents = []
         tweets = []
 
+        # iterate through att articles, and find the corresponding folders to read all tweets from them
+        # merge all tweets from all articles in one list
         for source, url in articles.items():
             tweets_file = os.path.join(result_folder(f"{topic}/{source}"), "tweets.json")
             if os.path.exists(tweets_file):
@@ -94,21 +110,14 @@ def merge_topics():
                 parents += parent_tweets
                 tweets += all_tweets
 
+        # create merged results folder
         merged_folder_dir = merged_folder(f"{topic}")
         os.makedirs(merged_folder_dir, exist_ok=True)
         
+        # analyze the merged tweets
         twitter.store_tweets(parents, os.path.join(merged_folder_dir, "tweets.json"))
         twitter.analyze(parents, tweets, merged_folder_dir)
 
         
-# analyze_topics()
+analyze_topics()
 merge_topics()
-
-
-# parents, all = twitter.store_tweets_for_url("https://www.nytimes.com/2022/12/15/business/china-zero-covid-apology.html", "./demo_set.json", 1000, 1)
-# twitter.tweets_to_csv(all, "./demo_set.csv")
-
-# twitter.analyze_url("https://www.nytimes.com/2022/12/15/business/china-zero-covid-apology.html", "./twitter_testing/")
-# twitter.analyze_url('"defenceless lyric video"', "./sude_tweet/")
-
-# twitter.analyze_tweets_file("./twitter_testing/tweets.json", "./twitter_testing/")
